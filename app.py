@@ -121,7 +121,7 @@ if uploaded_file is not None:
                     st.subheader("Bản xem trước: Báo cáo theo Đợt học thử & Người phụ trách")
                     # Kết hợp background_gradient và format để hiển thị chính xác
                     styled_1 = result.style.background_gradient(cmap='Blues_r', subset=num_cols_1).format(format_dict_1)
-                    st.dataframe(styled_1, use_container_width=True)
+                    st.dataframe(styled_1, width='stretch')
 
                     buffer_1 = io.BytesIO()
                     with pd.ExcelWriter(buffer_1, engine='openpyxl') as writer:
