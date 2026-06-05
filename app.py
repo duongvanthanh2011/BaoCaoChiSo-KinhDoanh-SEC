@@ -4,7 +4,7 @@ import io
 
 # Cấu hình giao diện rộng rãi
 st.set_page_config(page_title="Tổng hợp Báo cáo Học viên", layout="wide")
-st.title("📊 Hệ thống Tổng hợp & Phân tích Dữ liệu Học viên")
+st.title("📊 Tổng hợp & Phân tích Dữ liệu Học viên")
 
 # 1. Tải file đầu vào
 uploaded_file = st.file_uploader("Vui lòng tải lên file Excel dữ liệu gốc (.xlsx)", type=["xlsx"])
