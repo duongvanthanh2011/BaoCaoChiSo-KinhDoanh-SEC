@@ -135,7 +135,7 @@ st.info("Chọn các điều kiện bên dưới để tối ưu lượng dữ l
 
 # Sắp xếp các lựa chọn để hiển thị đẹp mắt
 account_types_options = sorted(account_types_list, key=lambda x: x.get("account_type_name") or "")
-account_sources_options = sorted(account_sources_list, key=lambda x: x.get("source_name") or "")
+account_sources_options = sorted(account_sources_list, key=lambda x: x.get("lft") or 0)
 users_options = sorted(users_list, key=lambda x: x.get("contact_name") or "")
 
 # Tạo form để người dùng điền thông số trước khi gọi API
@@ -158,8 +158,8 @@ with st.form("api_filter_form"):
         selected_sources = st.multiselect(
             "Nguồn khách hàng",
             options=account_sources_options,
-            format_func=lambda x: x.get("source_name"),
-            help="Chọn một hoặc nhiều nguồn khách hàng. Để trống để tải tất cả."
+            format_func=lambda x: ("— " * max(0, (x.get("lvl", 1) - 1))) + x.get("source_name", ""),
+            help="Chọn nguồn cha sẽ tự động bao gồm tất cả nguồn con. Để trống để tải tất cả."
         )
         selected_types = st.multiselect(
             "Nhóm khách hàng",
@@ -190,7 +190,21 @@ if submitted:
                 filtering_conditions["account_manager:in"] = mgr_ids
                 
         if selected_sources:
-            src_ids = [int(x["id"]) for x in selected_sources if "id" in x]
+            # Mở rộng danh sách nguồn: nếu chọn nguồn cha thì tự động thêm tất cả nguồn con
+            # sử dụng mô hình Nested Set (lft/rgt)
+            src_ids_selected = [int(x["id"]) for x in selected_sources if "id" in x]
+            src_ids = list(src_ids_selected)  # bắt đầu với các nguồn đã chọn trực tiếp
+            for parent in selected_sources:
+                p_lft = parent.get("lft", 0)
+                p_rgt = parent.get("rgt", 0)
+                if p_lft and p_rgt and p_rgt > p_lft + 1:
+                    # Nguồn này có con (rgt > lft + 1 trong nested set)
+                    for child in account_sources_list:
+                        c_lft = child.get("lft", 0)
+                        c_rgt = child.get("rgt", 0)
+                        c_id = child.get("id")
+                        if c_lft > p_lft and c_rgt < p_rgt and c_id not in src_ids:
+                            src_ids.append(int(c_id))
             if src_ids:
                 filtering_conditions["account_source:in"] = src_ids
 
