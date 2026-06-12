@@ -28,16 +28,20 @@ HEADERS = {
 # 0. HÀM CACHE LẤY DỮ LIỆU DANH MỤC TỪ API
 # ==========================================
 @st.cache_data(ttl=600)
-def get_account_types():
-    if not API_KEY:
+def get_account_types(api_key, url_base):
+    if not api_key:
         return []
-    url = f"{URL_BASE}/api/v6.1/account_types"
+    url = f"{url_base}/api/v6.1/account_types"
+    headers = {
+        "X-API-KEY": api_key,
+        "Content-Type": "application/json"
+    }
     params = {
         "fields": "id,level,account_type_name,account_type_code,description,invalid,parent_id",
         "limit": 1000
     }
     try:
-        res = requests.get(url, headers=HEADERS, params=params, json=params, timeout=15)
+        res = requests.get(url, headers=headers, params=params, json=params, timeout=15)
         res.raise_for_status()
         return res.json().get("data", [])
     except Exception as e:
@@ -45,16 +49,20 @@ def get_account_types():
         return []
 
 @st.cache_data(ttl=600)
-def get_account_sources():
-    if not API_KEY:
+def get_account_sources(api_key, url_base):
+    if not api_key:
         return []
-    url = f"{URL_BASE}/api/v6.1/account_sources"
+    url = f"{url_base}/api/v6.1/account_sources"
+    headers = {
+        "X-API-KEY": api_key,
+        "Content-Type": "application/json"
+    }
     params = {
         "fields": "id,source_name,source_code,valid,parent_id,lft,rgt,lvl",
         "limit": 1000
     }
     try:
-        res = requests.get(url, headers=HEADERS, params=params, json=params, timeout=15)
+        res = requests.get(url, headers=headers, params=params, json=params, timeout=15)
         res.raise_for_status()
         return res.json().get("data", [])
     except Exception as e:
@@ -62,10 +70,14 @@ def get_account_sources():
         return []
 
 @st.cache_data(ttl=600)
-def get_users():
-    if not API_KEY:
+def get_users(api_key, url_base):
+    if not api_key:
         return []
-    url = f"{URL_BASE}/api/v6.1/users"
+    url = f"{url_base}/api/v6.1/users"
+    headers = {
+        "X-API-KEY": api_key,
+        "Content-Type": "application/json"
+    }
     users = []
     offset = 0
     limit = 1000
@@ -77,7 +89,7 @@ def get_users():
                 "limit": limit,
                 "offset": offset
             }
-            res = requests.get(url, headers=HEADERS, params=params, json=params, timeout=15)
+            res = requests.get(url, headers=headers, params=params, json=params, timeout=15)
             res.raise_for_status()
             data_response = res.json()
             batch = data_response.get("data", [])
@@ -95,9 +107,9 @@ def get_users():
         return []
 
 # Tải trước dữ liệu danh mục để đưa vào bộ lọc
-account_types_list = get_account_types()
-account_sources_list = get_account_sources()
-users_list = get_users()
+account_types_list = get_account_types(API_KEY, URL_BASE)
+account_sources_list = get_account_sources(API_KEY, URL_BASE)
+users_list = get_users(API_KEY, URL_BASE)
 
 # Cấu hình giao diện rộng rãi
 st.set_page_config(page_title="Tổng hợp Báo cáo Học viên", layout="wide")
