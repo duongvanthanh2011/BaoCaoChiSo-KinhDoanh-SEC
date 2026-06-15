@@ -129,7 +129,7 @@ def _get_dot_hoc_thu(fields):
     try:
         ts = int(float(str(val)))
         if 946684800 < ts < 4102444800:
-            return datetime.fromtimestamp(ts).strftime("%d/%m/%Y")
+            return datetime.fromtimestamp(ts, tz=VN_TZ).strftime("%d/%m/%Y")
     except (ValueError, TypeError):
         pass
     return str(val)
