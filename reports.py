@@ -1,149 +1,104 @@
 """
-reports.py — Module tính toán và hiển thị báo cáo
+reports.py — Module hiển thị báo cáo
 Chứa các hàm:
-- Tính toán Báo cáo 1: Theo Đợt học thử & Người phụ trách
-- Tính toán Báo cáo 2: Theo Nguồn khách hàng & Nhóm
-- Hiển thị từng báo cáo trên giao diện Streamlit
+- render_report_1: Hiển thị Báo cáo 1
+- render_report_2: Hiển thị Báo cáo 2
+
+Re-export các hàm từ report_calculations để tương thích ngược với app.py:
+- add_indicator_columns
+- compute_report_1
+- compute_report_2
 """
 
 import streamlit as st
 import pandas as pd
 import io
+from st_aggrid import AgGrid
+from st_aggrid.grid_options_builder import GridOptionsBuilder
 
+# Import các phần từ các module con
+from report_utils import configure_standard_grid_columns, update_manual_inputs_in_state
+from report_calculations import (
+    add_indicator_columns, 
+    compute_report_1, 
+    compute_report_2,
+    prepare_excel_report_1,
+    prepare_excel_report_2
+)
 
-# ==========================================
-# NHÃN PHÂN LOẠI MỐI QUAN HỆ
-# ==========================================
-TRAO_DOI_LABELS = ["ĐANG TRAO ĐỔI", "HỌC VIÊN TIỀM NĂNG", "ĐÃ CỌC", "ĐÃ CHỐT - TIỀM NĂNG UPSALE", "ĐÃ CHỐT FULL"]
-TIEM_NANG_LABELS = ["HỌC VIÊN TIỀM NĂNG", "ĐÃ CỌC", "ĐÃ CHỐT - TIỀM NĂNG UPSALE", "ĐÃ CHỐT FULL"]
-COC_CHOT_LABELS = ["ĐÃ CỌC", "ĐÃ CHỐT - TIỀM NĂNG UPSALE", "ĐÃ CHỐT FULL"]
-
-
-def add_indicator_columns(df_filtered):
-    """
-    Tạo các cột chỉ báo (0/1) trên dữ liệu đã lọc.
-    Cần gọi trước khi tính báo cáo.
-
-    Args:
-        df_filtered: DataFrame đã lọc theo đợt học thử
-
-    Returns:
-        pd.DataFrame: DataFrame với các cột chỉ báo đã thêm
-    """
-    df_filtered["Data_trao_doi_duoc"] = df_filtered["Mối quan hệ"].isin(TRAO_DOI_LABELS).astype(int)
-    df_filtered["Data_tiem_nang"]     = df_filtered["Mối quan hệ"].isin(TIEM_NANG_LABELS).astype(int)
-    df_filtered["Data_coc_chot"]      = df_filtered["Mối quan hệ"].isin(COC_CHOT_LABELS).astype(int)
-    return df_filtered
-
-
-def compute_report_1(df_filtered):
-    """
-    Tính toán Báo cáo 1: Theo Đợt học thử & Người phụ trách.
-
-    Args:
-        df_filtered: DataFrame đã có các cột chỉ báo
-
-    Returns:
-        pd.DataFrame: Bảng kết quả với dòng TỔNG CỘNG
-    """
-    result = (
-        df_filtered
-        .groupby(["ĐỢT HỌC THỬ", "Người phụ trách"])
-        .agg(
-            Data_trao_doi_duoc=("Data_trao_doi_duoc", "sum"),
-            Data_tiem_nang=("Data_tiem_nang", "sum"),
-            Data_coc_chot=("Data_coc_chot", "sum"),
-            Count=("Mã KH", "count"),
-        )
-    )
-
-    result['Tỉ lệ trao đổi được'] = (result['Data_trao_doi_duoc'] / result['Count']) * 100
-    result['Tỉ lệ tiềm năng'] = (result['Data_tiem_nang'] / result['Count']) * 100
-    result['Tỉ lệ cọc/chốt'] = (result['Data_coc_chot'] / result['Count']) * 100
-    result = result.fillna(0)  # Tránh lỗi chia cho 0
-
-    # Bổ sung thêm dòng TỔNG CỘNG ở cuối bảng
-    if not result.empty:
-        result.loc[("TỔNG CỘNG", ""), :] = [
-            result["Data_trao_doi_duoc"].sum(),
-            result["Data_tiem_nang"].sum(),
-            result["Data_coc_chot"].sum(),
-            result["Count"].sum(),
-            result["Tỉ lệ trao đổi được"].mean(),
-            result["Tỉ lệ tiềm năng"].mean(),
-            result["Tỉ lệ cọc/chốt"].mean()
-        ]
-        int_cols = ["Data_trao_doi_duoc", "Data_tiem_nang", "Data_coc_chot", "Count"]
-        result[int_cols] = result[int_cols].astype(int)
-
-    return result
-
-
-def compute_report_2(df_filtered):
-    """
-    Tính toán Báo cáo 2: Theo Nguồn khách hàng & Nhóm (explode nguồn).
-
-    Args:
-        df_filtered: DataFrame đã có các cột chỉ báo
-
-    Returns:
-        pd.DataFrame: Bảng kết quả với dòng TỔNG CỘNG
-    """
-    df_exploded = df_filtered.explode("_nguon_kh_list").copy()
-    df_exploded.rename(columns={"_nguon_kh_list": "Nguồn khách hàng"}, inplace=True)
-
-    result_2 = (
-        df_exploded
-        .groupby(["Nguồn khách hàng", "Nhóm khách hàng"])
-        .agg(
-            Data_trao_doi_duoc=("Data_trao_doi_duoc", "sum"),
-            Data_tiem_nang=("Data_tiem_nang", "sum"),
-            Data_coc_chot=("Data_coc_chot", "sum"),
-            Count=("Mã KH", "count"),
-        )
-    )
-
-    result_2['Tỉ lệ trao đổi được (%)'] = (result_2['Data_trao_doi_duoc'] / result_2['Count']) * 100
-    result_2['Tỉ lệ tiềm năng (%)'] = (result_2['Data_tiem_nang'] / result_2['Count']) * 100
-    result_2['Tỉ lệ cọc/chốt (%)'] = (result_2['Data_coc_chot'] / result_2['Count']) * 100
-    result_2 = result_2.fillna(0)
-    result_2.rename_axis(["Nguồn khách hàng", "Nhóm khách hàng"], inplace=True)
-
-    # Bổ sung thêm dòng TỔNG CỘNG ở cuối bảng
-    if not result_2.empty:
-        result_2.loc[("TỔNG CỘNG", ""), :] = [
-            result_2["Data_trao_doi_duoc"].sum(),
-            result_2["Data_tiem_nang"].sum(),
-            result_2["Data_coc_chot"].sum(),
-            result_2["Count"].sum(),
-            result_2["Tỉ lệ trao đổi được (%)"].mean(),
-            result_2["Tỉ lệ tiềm năng (%)"].mean(),
-            result_2["Tỉ lệ cọc/chốt (%)"].mean()
-        ]
-        int_cols = ["Data_trao_doi_duoc", "Data_tiem_nang", "Data_coc_chot", "Count"]
-        result_2[int_cols] = result_2[int_cols].astype(int)
-
-    return result_2
+# Re-export để app.py import trực tiếp không bị lỗi
+__all__ = [
+    'add_indicator_columns',
+    'compute_report_1',
+    'compute_report_2',
+    'render_report_1',
+    'render_report_2'
+]
 
 
 def render_report_1(result):
-    """Hiển thị Báo cáo 1 trên giao diện Streamlit (bảng + download)."""
+    """Hiển thị Báo cáo 1 bằng bảng phân cấp AgGrid hỗ trợ chỉnh sửa và tính toán động."""
     st.subheader("Bản xem trước: Báo cáo theo Đợt học thử & Người phụ trách")
+    
+    state_key = "report_1_edited_df"
+    
+    # Khởi tạo hoặc reset trạng thái chỉnh sửa
+    if state_key not in st.session_state or st.session_state[state_key] is None:
+        st.session_state[state_key] = result.copy()
+    else:
+        # Nếu khóa nhóm hoặc số dòng thay đổi (do thay đổi bộ lọc), reset dữ liệu chỉnh sửa
+        current_state = st.session_state[state_key]
+        if (len(current_state) != len(result) or 
+            not (current_state['ĐỢT HỌC THỬ'].equals(result['ĐỢT HỌC THỬ']) and 
+                 current_state['Phòng ban'].equals(result['Phòng ban']) and
+                 current_state['Người phụ trách'].equals(result['Người phụ trách']))):
+            st.session_state[state_key] = result.copy()
+            
+    df_to_show = st.session_state[state_key]
+    
+    # Xây dựng GridOptions cho AgGrid
+    gb = GridOptionsBuilder.from_dataframe(df_to_show)
+    
+    # Thiết lập nhóm phân cấp
+    gb.configure_column("ĐỢT HỌC THỬ", rowGroup=True, hide=True)
+    gb.configure_column("Phòng ban", rowGroup=True, hide=True)
+    gb.configure_column("Thời gian xuất data", width=140, pinned="left")
+    gb.configure_column("Người phụ trách", width=160, pinned="left")
+    
+    # Cấu hình các cột số lượng, nhập liệu và tỉ lệ KPI (tái sử dụng từ report_utils)
+    count_cols = [
+        'Sai Sót - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
+        'Cọc Khác', 'Tổng Cọc Học Thử'
+    ]
+    configure_standard_grid_columns(gb, count_cols)
+    
+    grid_options = gb.build()
+    grid_options["groupIncludeFooter"] = True
+    grid_options["groupIncludeTotalFooter"] = True
+    grid_options["groupDefaultExpanded"] = -1
+    grid_options["suppressAggFuncInHeader"] = True
+    
+    # Hiển thị AgGrid
+    grid_response = AgGrid(
+        df_to_show,
+        gridOptions=grid_options,
+        enable_enterprise_modules=True,
+        allow_unsafe_jscode=True,
+        fit_columns_on_grid_load=True,
+        height=550,
+        key="grid_report_1"
+    )
+    
+    # Lưu lại thay đổi nhập tay từ người dùng vào session state (tái sử dụng từ report_utils)
+    update_manual_inputs_in_state(grid_response, state_key, ['ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách'])
 
-    num_cols = ['Data_trao_doi_duoc', 'Data_tiem_nang', 'Data_coc_chot', 'Count',
-                'Tỉ lệ trao đổi được', 'Tỉ lệ tiềm năng', 'Tỉ lệ cọc/chốt']
-    format_dict = {
-        'Tỉ lệ trao đổi được': "{:.2f}",
-        'Tỉ lệ tiềm năng': "{:.2f}",
-        'Tỉ lệ cọc/chốt': "{:.2f}"
-    }
-
-    styled = result.style.background_gradient(cmap='Blues_r', subset=num_cols).format(format_dict)
-    st.dataframe(styled, width='stretch')
-
+    # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
+    df_excel = prepare_excel_report_1(st.session_state[state_key])
+    
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        result.round(2).to_excel(writer, sheet_name='BC_Hoc_Thu_Phu_Trach')
+        df_excel.round(2).to_excel(writer, sheet_name='BC_Hoc_Thu_Phu_Trach', index=False)
 
     st.download_button(
         label="📥 Tải xuống Báo cáo 1 (Excel)",
@@ -154,23 +109,66 @@ def render_report_1(result):
 
 
 def render_report_2(result_2):
-    """Hiển thị Báo cáo 2 trên giao diện Streamlit (bảng + download)."""
+    """Hiển thị Báo cáo 2 bằng bảng phân cấp AgGrid hỗ trợ chỉnh sửa và tính toán động."""
     st.subheader("Bản xem trước: Báo cáo theo Nguồn khách hàng & Nhóm khách hàng")
+    
+    state_key = "report_2_edited_df"
+    
+    # Khởi tạo hoặc reset trạng thái chỉnh sửa
+    if state_key not in st.session_state or st.session_state[state_key] is None:
+        st.session_state[state_key] = result_2.copy()
+    else:
+        # Nếu khóa nhóm hoặc số dòng thay đổi (do thay đổi bộ lọc), reset dữ liệu chỉnh sửa
+        current_state = st.session_state[state_key]
+        if (len(current_state) != len(result_2) or 
+            not (current_state['Nguồn khách hàng'].equals(result_2['Nguồn khách hàng']) and 
+                 current_state['Nhóm khách hàng'].equals(result_2['Nhóm khách hàng']))):
+            st.session_state[state_key] = result_2.copy()
+            
+    df_to_show = st.session_state[state_key]
+    
+    # Xây dựng GridOptions cho AgGrid
+    gb = GridOptionsBuilder.from_dataframe(df_to_show)
+    
+    # Thiết lập nhóm phân cấp
+    gb.configure_column("Nguồn khách hàng", rowGroup=True, hide=True)
+    gb.configure_column("Thời gian xuất data", width=140, pinned="left")
+    gb.configure_column("Nhóm khách hàng", width=160, pinned="left")
+    
+    # Cấu hình các cột số lượng, nhập liệu và tỉ lệ KPI (tái sử dụng từ report_utils)
+    count_cols = [
+        'Sai Sót - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
+        'Cọc Khác', 'Tổng Cọc Học Thử'
+    ]
+    configure_standard_grid_columns(gb, count_cols)
+    
+    grid_options = gb.build()
+    grid_options["groupIncludeFooter"] = True
+    grid_options["groupIncludeTotalFooter"] = True
+    grid_options["groupDefaultExpanded"] = -1
+    grid_options["suppressAggFuncInHeader"] = True
+    
+    # Hiển thị AgGrid
+    grid_response = AgGrid(
+        df_to_show,
+        gridOptions=grid_options,
+        enable_enterprise_modules=True,
+        allow_unsafe_jscode=True,
+        fit_columns_on_grid_load=True,
+        height=550,
+        key="grid_report_2"
+    )
+    
+    # Lưu lại thay đổi nhập tay từ người dùng vào session state (tái sử dụng từ report_utils)
+    update_manual_inputs_in_state(grid_response, state_key, ['Nguồn khách hàng', 'Nhóm khách hàng'])
 
-    num_cols = ['Data_trao_doi_duoc', 'Data_tiem_nang', 'Data_coc_chot', 'Count',
-                'Tỉ lệ trao đổi được (%)', 'Tỉ lệ tiềm năng (%)', 'Tỉ lệ cọc/chốt (%)']
-    format_dict = {
-        'Tỉ lệ trao đổi được (%)': "{:.2f}",
-        'Tỉ lệ tiềm năng (%)': "{:.2f}",
-        'Tỉ lệ cọc/chốt (%)': "{:.2f}"
-    }
-
-    styled = result_2.style.background_gradient(cmap='Greens_r', subset=num_cols).format(format_dict)
-    st.dataframe(styled, use_container_width=True)
-
+    # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
+    df_excel = prepare_excel_report_2(st.session_state[state_key])
+    
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        result_2.round(2).to_excel(writer, sheet_name='BC_Nguon_Nhom_KH')
+        df_excel.round(2).to_excel(writer, sheet_name='BC_Nguon_Nhom_KH', index=False)
 
     st.download_button(
         label="📥 Tải xuống Báo cáo 2 (Excel)",

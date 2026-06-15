@@ -12,6 +12,63 @@ from datetime import datetime, time, timezone, timedelta
 # Định nghĩa múi giờ Việt Nam (UTC+7)
 VN_TZ = timezone(timedelta(hours=7))
 
+
+def build_department_options(users_list):
+    """
+    Tạo danh sách phòng ban unique để hiển thị trên UI.
+    Output phù hợp cho st.multiselect.
+    """
+    if not users_list:
+        return []
+
+    dept_map = {}
+    for user in users_list:
+        dept_id = user.get("dept_id")
+        dept_name = user.get("dept_name")
+        if dept_id is None or not dept_name:
+            continue
+        if dept_id not in dept_map:
+            dept_map[dept_id] = {
+                "dept_id": dept_id,
+                "dept_name": dept_name,
+            }
+
+    return sorted(dept_map.values(), key=lambda x: x["dept_name"] or "")
+
+
+def build_user_ids_by_departments(selected_departments, users_list):
+    """
+    Từ danh sách phòng ban đã chọn, trả về list user_id của toàn bộ nhân viên thuộc các phòng ban đó.
+    Đây là list sẽ dùng cho filtering_conditions["account_manager:in"].
+    """
+    if not selected_departments or not users_list:
+        return []
+
+    selected_dept_ids = {
+        str(item.get("dept_id"))
+        for item in selected_departments
+        if item.get("dept_id") is not None
+    }
+
+    if not selected_dept_ids:
+        return []
+
+    user_ids = set()
+    for user in users_list:
+        dept_id = user.get("dept_id")
+        user_id = user.get("user_id")
+
+        if dept_id is None or user_id is None:
+            continue
+
+        if str(dept_id) in selected_dept_ids:
+            try:
+                user_ids.add(int(user_id))
+            except (ValueError, TypeError):
+                continue
+
+    return sorted(user_ids)
+
 def convert_date_to_timestamp(date_obj, is_end_of_day=False):
     """
     Chuyển đổi datetime.date hoặc chuỗi ("YYYY-MM-DD") sang số giây tính từ epoch.
@@ -63,12 +120,12 @@ def expand_source_ids(selected_sources, all_sources_list):
     return src_ids
 
 
-def build_filtering_conditions(selected_managers, src_ids, type_ids, date_range):
+def build_filtering_conditions(manager_ids, src_ids, type_ids, date_range):
     """
     Xây dựng bộ lọc cho API (cấu trúc "filtering" theo docs của Getfly).
 
     Args:
-        selected_managers: List các người phụ trách đã chọn
+        manager_ids: List ID người phụ trách đã chọn
         src_ids: List ID nguồn đã mở rộng
         type_ids: List ID nhóm khách hàng
         date_range: Tuple/list (start_date, end_date)
@@ -78,10 +135,8 @@ def build_filtering_conditions(selected_managers, src_ids, type_ids, date_range)
     """
     filtering_conditions = {}
 
-    if selected_managers:
-        mgr_ids = [int(x["user_id"]) for x in selected_managers if "user_id" in x]
-        if mgr_ids:
-            filtering_conditions["account_manager:in"] = mgr_ids
+    if manager_ids:
+        filtering_conditions["account_manager:in"] = manager_ids
 
     if src_ids:
         filtering_conditions["account_source:in"] = src_ids
@@ -89,7 +144,6 @@ def build_filtering_conditions(selected_managers, src_ids, type_ids, date_range)
     if type_ids:
         filtering_conditions["account_type:in"] = type_ids
 
-    # Nếu có chọn ngày (from - to)
     if len(date_range) == 2:
         start_timestamp = convert_date_to_timestamp(date_range[0], is_end_of_day=False)
         end_timestamp = convert_date_to_timestamp(date_range[1], is_end_of_day=True)
@@ -175,7 +229,7 @@ def _map_account_types(val, type_map, type_ids):
     return "Nhóm Chung"
 
 
-def transform_dataframe(df, src_ids, type_ids, account_types_list):
+def transform_dataframe(df, src_ids, type_ids, account_types_list, users_list=None):
     """
     Biến đổi DataFrame thô từ API thành DataFrame sạch cho báo cáo.
 
@@ -184,6 +238,7 @@ def transform_dataframe(df, src_ids, type_ids, account_types_list):
     2. Đổi tên cột cho dễ đọc
     3. Trích xuất đợt học thử từ custom fields
     4. Map ID nhóm khách hàng sang tên
+    4.5. Map người phụ trách sang tên phòng ban
     5. Xử lý giá trị NaN
 
     Args:
@@ -191,6 +246,7 @@ def transform_dataframe(df, src_ids, type_ids, account_types_list):
         src_ids: List ID nguồn đã lọc (để filter nguồn trong mỗi record)
         type_ids: List ID nhóm khách hàng đã lọc
         account_types_list: Toàn bộ danh sách nhóm khách hàng từ API (dùng để map tên)
+        users_list: Danh sách người dùng từ API (dùng để lấy phòng ban)
 
     Returns:
         pd.DataFrame: DataFrame đã biến đổi, sẵn sàng cho báo cáo
@@ -222,6 +278,22 @@ def transform_dataframe(df, src_ids, type_ids, account_types_list):
         )
     else:
         df["Nhóm khách hàng"] = "Nhóm Chung"
+
+    # 4.5. Map account_manager sang phòng ban
+    if "account_manager" in df.columns and users_list:
+        user_to_dept = {}
+        for u in users_list:
+            u_id = u.get("user_id")
+            if u_id is not None:
+                dept_name = u.get("dept_name") or "Chưa xác định"
+                user_to_dept[str(u_id)] = dept_name
+                try:
+                    user_to_dept[int(u_id)] = dept_name
+                except (ValueError, TypeError):
+                    pass
+        df["Phòng ban"] = df["account_manager"].map(user_to_dept).fillna("Chưa xác định")
+    else:
+        df["Phòng ban"] = "Chưa xác định"
 
     # 5. Đảm bảo không có giá trị NaN làm gãy thuật toán
     df["Mối quan hệ"] = df["Mối quan hệ"].fillna("CHƯA XÁC ĐỊNH")
