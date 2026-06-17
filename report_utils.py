@@ -162,6 +162,48 @@ function(params) {
 }
 """)
 
+# ==========================================
+# JS GETTERS & STYLES CHO BÁO CÁO 2 (% data đã chia)
+# ==========================================
+
+getter_pct_r2_half = JsCode("""
+function(params) {
+    var totalData = 0, dataOrder = 0;
+    if (params.node && params.node.group) {
+        totalData = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
+        dataOrder = params.node.aggData ? (params.node.aggData['Data order'] || 0) : 0;
+    } else {
+        totalData = params.data ? (params.data['Tổng số Data'] || 0) : 0;
+        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
+    }
+    var halfOrder = dataOrder * 0.5;
+    return halfOrder > 0 ? (totalData / halfOrder * 100) : 0;
+}
+""")
+
+getter_pct_r2_full = JsCode("""
+function(params) {
+    var totalData = 0, dataOrder = 0;
+    if (params.node && params.node.group) {
+        totalData = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
+        dataOrder = params.node.aggData ? (params.node.aggData['Data order'] || 0) : 0;
+    } else {
+        totalData = params.data ? (params.data['Tổng số Data'] || 0) : 0;
+        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
+    }
+    return dataOrder > 0 ? (totalData / dataOrder * 100) : 0;
+}
+""")
+
+style_pct_r2_full = JsCode("""
+function(params) {
+    var val = params.value;
+    if (val === undefined || val === null) return {};
+    if (val >= 95 && val <= 105) return {'backgroundColor':'#ccffcc'};
+    return {'backgroundColor':'#fff2cc'};
+}
+""")
+
 
 # ==========================================
 # HÀM TIỆN ÍCH DÙNG CHUNG CHO BẢNG AGGRID
@@ -218,17 +260,46 @@ def configure_standard_grid_columns(gb, count_cols):
     )
 
 
-def update_manual_inputs_in_state(grid_response, state_key, keys):
+def configure_report2_grid_columns(gb, count_cols):
     """
-    Đồng bộ dữ liệu nhập tay ('Cọc Khác' và 'Tổng Cọc Học Thử') từ phản hồi AgGrid vào session state.
-    Loại bỏ các dòng nhóm/footer (có khóa null) để tránh xung đột hoặc ghi đè sai dữ liệu.
+    Cấu hình các cột cho Báo cáo 2: Nguồn, Tổng số Data, Data order (nhập tay),
+    và 2 cột % tính toán động.
     """
+    for c in count_cols:
+        gb.configure_column(c, aggFunc="sum", width=150)
+
+    gb.configure_column("Data order", editable=True, aggFunc="sum", width=140)
+
+    gb.configure_column(
+        "% data đã chia / 50% data order",
+        valueGetter=getter_pct_r2_half,
+        valueFormatter=pct_formatter,
+        width=240
+    )
+    gb.configure_column(
+        "% data đã chia / data order",
+        valueGetter=getter_pct_r2_full,
+        cellStyle=style_pct_r2_full,
+        valueFormatter=pct_formatter,
+        width=240
+    )
+
+
+def update_manual_inputs_in_state(grid_response, state_key, keys, editable_cols=None):
+    """
+    Đồng bộ dữ liệu nhập tay từ phản hồi AgGrid vào session state.
+    editable_cols: danh sách cột nhập tay cần sync (mặc định: Cọc Khác, Tổng Cọc Học Thử).
+    """
+    if editable_cols is None:
+        editable_cols = ['Cọc Khác', 'Tổng Cọc Học Thử']
+
     if grid_response is not None and 'data' in grid_response:
         updated_df = pd.DataFrame(grid_response['data'])
         if not updated_df.empty:
-            if 'Cọc Khác' in updated_df.columns and 'Tổng Cọc Học Thử' in updated_df.columns:
+            present_cols = [c for c in editable_cols if c in updated_df.columns]
+            if present_cols:
                 updated_clean = updated_df.dropna(subset=keys)
-                updated_clean = updated_clean.groupby(keys, as_index=False)[['Cọc Khác', 'Tổng Cọc Học Thử']].first()
+                updated_clean = updated_clean.groupby(keys, as_index=False)[present_cols].first()
 
                 df_state = st.session_state[state_key]
                 orig_cols = list(df_state.columns)
@@ -236,7 +307,7 @@ def update_manual_inputs_in_state(grid_response, state_key, keys):
                 df_state_idx = df_state.set_index(keys)
                 updated_idx = updated_clean.set_index(keys)
 
-                df_state_idx.update(updated_idx[['Cọc Khác', 'Tổng Cọc Học Thử']])
+                df_state_idx.update(updated_idx[present_cols])
 
                 df_updated = df_state_idx.reset_index()
                 st.session_state[state_key] = df_updated[orig_cols]

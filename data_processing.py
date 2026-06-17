@@ -229,6 +229,23 @@ def _map_account_types(val, type_map, type_ids):
     return "Nhóm Chung"
 
 
+def _classify_nguon(label):
+    """Phân loại nguồn khách hàng dựa trên 3 ký tự đầu của label."""
+    if not isinstance(label, str) or not label.strip():
+        return "KHÁC"
+    prefix = label[:3].upper()
+    if prefix == "ADS":
+        lower = label.lower()
+        if "trường chinh" in lower or "truong chinh" in lower:
+            return "ADS - Trường Chinh"
+        if "cầu giấy" in lower or "cau giay" in lower:
+            return "ADS - Cầu Giấy"
+        return "ADS - Khác"
+    if prefix == "ORG":
+        return "ORG"
+    return "KHÁC"
+
+
 def transform_dataframe(df, src_ids, type_ids, account_types_list, users_list=None):
     """
     Biến đổi DataFrame thô từ API thành DataFrame sạch cho báo cáo.

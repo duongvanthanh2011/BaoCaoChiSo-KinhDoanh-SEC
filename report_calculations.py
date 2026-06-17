@@ -10,6 +10,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from report_utils import TRAO_DOI_LABELS, TIEM_NANG_LABELS, COC_CHOT_LABELS
+from data_processing import _classify_nguon
 
 def add_indicator_columns(df_filtered):
     """
@@ -98,72 +99,50 @@ def compute_report_1(df_filtered):
 
 def compute_report_2(df_filtered):
     """
-    Tính toán Báo cáo 2: Theo Nguồn khách hàng & Nhóm khách hàng (dưới dạng flat DataFrame).
+    Tính toán Báo cáo 2: Theo Đợt học thử & Nguồn khách hàng (ADS-TC, ADS-CG, ORG, KHÁC).
     """
     if df_filtered.empty:
         cols = [
-            'Thời gian xuất data', 'Nguồn khách hàng', 'Nhóm khách hàng',
-            'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
-            'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-            'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử',
-            '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt'
+            'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn',
+            'Tổng số Data', 'Data order',
+            '% data đã chia / 50% data order', '% data đã chia / data order'
         ]
         return pd.DataFrame(columns=cols)
 
     fetch_time = st.session_state.get("fetch_time", datetime.now().strftime("%Hh%M ngày %d/%m"))
 
-    df_exploded = df_filtered.explode("_nguon_kh_list").copy()
-    df_exploded.rename(columns={"_nguon_kh_list": "Nguồn khách hàng"}, inplace=True)
+    df_work = df_filtered.copy()
+    df_work['_classified_source'] = df_work['_nguon_kh_list'].apply(
+        lambda x: _classify_nguon(x[0]) if isinstance(x, list) and x else "KHÁC"
+    )
 
     result_2 = (
-        df_exploded
-        .groupby(["Nguồn khách hàng", "Nhóm khách hàng"])
-        .agg(
-            sai_so_sai_doi_tuong=("SAI SỐ - SAI ĐỐI TƯỢNG", "sum"),
-            tiem_nang_chua_goi=("TIỀM NĂNG CHƯA GỌI", "sum"),
-            Data_trao_doi_duoc=("Data_trao_doi_duoc", "sum"),
-            Data_tiem_nang=("Data_tiem_nang", "sum"),
-            Data_coc_chot=("Data_coc_chot", "sum"),
-            Count=("Mã KH", "count"),
-        )
+        df_work
+        .groupby(["ĐỢT HỌC THỬ", "_classified_source"])
+        .agg(Count=("Mã KH", "count"))
         .reset_index()
     )
 
     result_2.rename(columns={
-        "sai_so_sai_doi_tuong": "Sai Số - Sai Đối Tượng",
-        "tiem_nang_chua_goi": "Tiềm Năng Chưa Gọi",
-        "Data_trao_doi_duoc": "Data Trao Đổi Được",
-        "Data_tiem_nang": "Data Tiềm Năng",
-        "Data_coc_chot": "Data Cọc Chốt",
+        "_classified_source": "Nguồn",
         "Count": "Tổng số Data"
     }, inplace=True)
 
     result_2['Thời gian xuất data'] = fetch_time
-    result_2['Tổng số data trừ sai số'] = result_2['Tổng số Data'] - result_2['Sai Số - Sai Đối Tượng']
-    result_2['Cọc Khác'] = 0
-    result_2['Tổng Cọc Học Thử'] = 0
+    result_2['Data order'] = 0
 
-    result_2['% Sai Số'] = 0.0
-    result_2['% Data Tiềm Năng Chưa Gọi'] = 0.0
-    result_2['% Data Trao Đổi Được'] = 0.0
-    result_2['% Data Tiềm Năng'] = 0.0
-    result_2['% Data Cọc-Chốt'] = 0.0
+    result_2['% data đã chia / 50% data order'] = 0.0
+    result_2['% data đã chia / data order'] = 0.0
 
     cols_order = [
-        'Thời gian xuất data', 'Nguồn khách hàng', 'Nhóm khách hàng',
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
-        'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-        'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử',
-        '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt'
+        'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn',
+        'Tổng số Data', 'Data order',
+        '% data đã chia / 50% data order', '% data đã chia / data order'
     ]
     result_2 = result_2[cols_order]
 
-    int_cols = [
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
-        'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-        'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử'
-    ]
-    result_2[int_cols] = result_2[int_cols].astype(int)
+    result_2['Tổng số Data'] = result_2['Tổng số Data'].astype(int)
+    result_2['Data order'] = result_2['Data order'].astype(int)
 
     return result_2
 
@@ -226,32 +205,27 @@ def prepare_excel_report_1(df_edited):
 def prepare_excel_report_2(df_edited):
     """Tính toán bảng hoàn chỉnh gồm phần trăm và dòng tổng cộng cho Report 2 (dùng cho download Excel)."""
     df_excel = df_edited.copy()
-    df_excel = compute_excel_percentages(df_excel)
+
+    # Tính % trên từng dòng
+    data_order = df_excel['Data order'].replace(0, float('nan'))
+    half_order = data_order * 0.5
+    df_excel['% data đã chia / 50% data order'] = (df_excel['Tổng số Data'] / half_order * 100).fillna(0)
+    df_excel['% data đã chia / data order'] = (df_excel['Tổng số Data'] / data_order * 100).fillna(0)
 
     if not df_excel.empty:
+        total_data = int(df_excel['Tổng số Data'].sum())
+        total_order = int(df_excel['Data order'].sum())
+        half_total = total_order * 0.5
+
         total_row = {
             'Thời gian xuất data': df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else '',
-            'Nguồn khách hàng': 'TỔNG CỘNG',
-            'Nhóm khách hàng': '',
-            'Sai Số - Sai Đối Tượng': df_excel['Sai Số - Sai Đối Tượng'].sum(),
-            'Tiềm Năng Chưa Gọi': df_excel['Tiềm Năng Chưa Gọi'].sum(),
-            'Data Trao Đổi Được': df_excel['Data Trao Đổi Được'].sum(),
-            'Data Tiềm Năng': df_excel['Data Tiềm Năng'].sum(),
-            'Data Cọc Chốt': df_excel['Data Cọc Chốt'].sum(),
-            'Tổng số Data': df_excel['Tổng số Data'].sum(),
-            'Cọc Khác': df_excel['Cọc Khác'].sum(),
-            'Tổng Cọc Học Thử': df_excel['Tổng Cọc Học Thử'].sum(),
+            'ĐỢT HỌC THỬ': 'TỔNG CỘNG',
+            'Nguồn': '',
+            'Tổng số Data': total_data,
+            'Data order': total_order,
+            '% data đã chia / 50% data order': (total_data / half_total * 100) if half_total else 0,
+            '% data đã chia / data order': (total_data / total_order * 100) if total_order else 0,
         }
-
-        total_row['Tổng số data trừ sai số'] = total_row['Tổng số Data'] - total_row['Sai Số - Sai Đối Tượng']
-
-        tot_count = total_row['Tổng số Data']
-        base = total_row['Tổng số data trừ sai số']
-        total_row['% Sai Số'] = (total_row['Sai Số - Sai Đối Tượng'] / tot_count * 100) if tot_count else 0
-        total_row['% Data Tiềm Năng Chưa Gọi'] = (total_row['Tiềm Năng Chưa Gọi'] / base * 100) if base else 0
-        total_row['% Data Trao Đổi Được'] = (total_row['Data Trao Đổi Được'] / base * 100) if base else 0
-        total_row['% Data Tiềm Năng'] = (total_row['Data Tiềm Năng'] / base * 100) if base else 0
-        total_row['% Data Cọc-Chốt'] = (total_row['Data Cọc Chốt'] / base * 100) if base else 0
 
         df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
 
