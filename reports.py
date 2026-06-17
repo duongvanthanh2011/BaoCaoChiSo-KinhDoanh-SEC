@@ -65,20 +65,39 @@ def render_report_1(result):
     gb.configure_column("Thời gian xuất data", width=140, pinned="left")
     gb.configure_column("Người phụ trách", width=160, pinned="left")
     
-    # Cấu hình các cột số lượng, nhập liệu và tỉ lệ KPI (tái sử dụng từ report_utils)
+    # Cấu hình các cột số lượng và tỉ lệ KPI (tái sử dụng từ report_utils)
     count_cols = [
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-        'Cọc Khác', 'Tổng Cọc Học Thử'
+        'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử'
     ]
     configure_standard_grid_columns(gb, count_cols)
-    
+
     grid_options = gb.build()
     grid_options["groupIncludeFooter"] = True
     grid_options["groupIncludeTotalFooter"] = True
     grid_options["groupDefaultExpanded"] = -1
     grid_options["suppressAggFuncInHeader"] = True
-    
+
+    # Dòng tổng cố định ở đầu bảng (pinned top row)
+    if not df_to_show.empty:
+        total_sai_so = int(df_to_show['Sai Số - Sai Đối Tượng'].sum())
+        total_data = int(df_to_show['Tổng số Data'].sum())
+        pinned_row = {
+            'Thời gian xuất data': df_to_show['Thời gian xuất data'].iloc[0],
+            'Người phụ trách': '📊 TỔNG DATA XUẤT RA',
+            'Sai Số - Sai Đối Tượng': total_sai_so,
+            'Tiềm Năng Chưa Gọi': int(df_to_show['Tiềm Năng Chưa Gọi'].sum()),
+            'Data Trao Đổi Được': int(df_to_show['Data Trao Đổi Được'].sum()),
+            'Data Tiềm Năng': int(df_to_show['Data Tiềm Năng'].sum()),
+            'Data Cọc Chốt': int(df_to_show['Data Cọc Chốt'].sum()),
+            'Tổng số Data': total_data,
+            'Tổng số data trừ sai số': total_data - total_sai_so,
+            'Cọc Khác': int(df_to_show['Cọc Khác'].sum()),
+            'Tổng Cọc Học Thử': int(df_to_show['Tổng Cọc Học Thử'].sum()),
+        }
+        grid_options["pinnedTopRowData"] = [pinned_row]
+
     # Hiển thị AgGrid
     grid_response = AgGrid(
         df_to_show,
@@ -89,8 +108,8 @@ def render_report_1(result):
         height=550,
         key="grid_report_1"
     )
-    
-    # Lưu lại thay đổi nhập tay từ người dùng vào session state (tái sử dụng từ report_utils)
+
+    # Lưu lại thay đổi nhập tay từ người dùng vào session state
     update_manual_inputs_in_state(grid_response, state_key, ['ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách'])
 
     # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
@@ -135,20 +154,39 @@ def render_report_2(result_2):
     gb.configure_column("Thời gian xuất data", width=140, pinned="left")
     gb.configure_column("Nhóm khách hàng", width=160, pinned="left")
     
-    # Cấu hình các cột số lượng, nhập liệu và tỉ lệ KPI (tái sử dụng từ report_utils)
+    # Cấu hình các cột số lượng và tỉ lệ KPI (tái sử dụng từ report_utils)
     count_cols = [
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-        'Cọc Khác', 'Tổng Cọc Học Thử'
+        'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử'
     ]
     configure_standard_grid_columns(gb, count_cols)
-    
+
     grid_options = gb.build()
     grid_options["groupIncludeFooter"] = True
     grid_options["groupIncludeTotalFooter"] = True
     grid_options["groupDefaultExpanded"] = -1
     grid_options["suppressAggFuncInHeader"] = True
-    
+
+    # Dòng tổng cố định ở đầu bảng (pinned top row)
+    if not df_to_show.empty:
+        total_sai_so = int(df_to_show['Sai Số - Sai Đối Tượng'].sum())
+        total_data = int(df_to_show['Tổng số Data'].sum())
+        pinned_row = {
+            'Thời gian xuất data': df_to_show['Thời gian xuất data'].iloc[0],
+            'Nhóm khách hàng': '📊 TỔNG DATA XUẤT RA',
+            'Sai Số - Sai Đối Tượng': total_sai_so,
+            'Tiềm Năng Chưa Gọi': int(df_to_show['Tiềm Năng Chưa Gọi'].sum()),
+            'Data Trao Đổi Được': int(df_to_show['Data Trao Đổi Được'].sum()),
+            'Data Tiềm Năng': int(df_to_show['Data Tiềm Năng'].sum()),
+            'Data Cọc Chốt': int(df_to_show['Data Cọc Chốt'].sum()),
+            'Tổng số Data': total_data,
+            'Tổng số data trừ sai số': total_data - total_sai_so,
+            'Cọc Khác': int(df_to_show['Cọc Khác'].sum()),
+            'Tổng Cọc Học Thử': int(df_to_show['Tổng Cọc Học Thử'].sum()),
+        }
+        grid_options["pinnedTopRowData"] = [pinned_row]
+
     # Hiển thị AgGrid
     grid_response = AgGrid(
         df_to_show,
@@ -159,8 +197,8 @@ def render_report_2(result_2):
         height=550,
         key="grid_report_2"
     )
-    
-    # Lưu lại thay đổi nhập tay từ người dùng vào session state (tái sử dụng từ report_utils)
+
+    # Lưu lại thay đổi nhập tay từ người dùng vào session state
     update_manual_inputs_in_state(grid_response, state_key, ['Nguồn khách hàng', 'Nhóm khách hàng'])
 
     # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download

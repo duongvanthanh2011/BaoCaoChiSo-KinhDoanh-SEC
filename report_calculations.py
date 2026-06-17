@@ -33,12 +33,11 @@ def compute_report_1(df_filtered):
     """
     if df_filtered.empty:
         cols = [
-            'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách', 
-            'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+            'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách',
+            'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
             'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-            'Cọc Khác', 'Tổng Cọc Học Thử',
-            '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt',
-            '% Tổng Cọc Học Thử'
+            'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử',
+            '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt'
         ]
         return pd.DataFrame(columns=cols)
 
@@ -68,6 +67,7 @@ def compute_report_1(df_filtered):
     }, inplace=True)
 
     result['Thời gian xuất data'] = fetch_time
+    result['Tổng số data trừ sai số'] = result['Tổng số Data'] - result['Sai Số - Sai Đối Tượng']
     result['Cọc Khác'] = 0
     result['Tổng Cọc Học Thử'] = 0
 
@@ -76,22 +76,20 @@ def compute_report_1(df_filtered):
     result['% Data Trao Đổi Được'] = 0.0
     result['% Data Tiềm Năng'] = 0.0
     result['% Data Cọc-Chốt'] = 0.0
-    result['% Tổng Cọc Học Thử'] = 0.0
 
     cols_order = [
-        'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách', 
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách',
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-        'Cọc Khác', 'Tổng Cọc Học Thử',
-        '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt',
-        '% Tổng Cọc Học Thử'
+        'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử',
+        '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt'
     ]
     result = result[cols_order]
-    
+
     int_cols = [
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-        'Cọc Khác', 'Tổng Cọc Học Thử'
+        'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử'
     ]
     result[int_cols] = result[int_cols].astype(int)
 
@@ -104,12 +102,11 @@ def compute_report_2(df_filtered):
     """
     if df_filtered.empty:
         cols = [
-            'Thời gian xuất data', 'Nguồn khách hàng', 'Nhóm khách hàng', 
-            'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+            'Thời gian xuất data', 'Nguồn khách hàng', 'Nhóm khách hàng',
+            'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
             'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-            'Cọc Khác', 'Tổng Cọc Học Thử',
-            '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt',
-            '% Tổng Cọc Học Thử'
+            'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử',
+            '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt'
         ]
         return pd.DataFrame(columns=cols)
 
@@ -142,6 +139,7 @@ def compute_report_2(df_filtered):
     }, inplace=True)
 
     result_2['Thời gian xuất data'] = fetch_time
+    result_2['Tổng số data trừ sai số'] = result_2['Tổng số Data'] - result_2['Sai Số - Sai Đối Tượng']
     result_2['Cọc Khác'] = 0
     result_2['Tổng Cọc Học Thử'] = 0
 
@@ -150,22 +148,20 @@ def compute_report_2(df_filtered):
     result_2['% Data Trao Đổi Được'] = 0.0
     result_2['% Data Tiềm Năng'] = 0.0
     result_2['% Data Cọc-Chốt'] = 0.0
-    result_2['% Tổng Cọc Học Thử'] = 0.0
 
     cols_order = [
-        'Thời gian xuất data', 'Nguồn khách hàng', 'Nhóm khách hàng', 
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Thời gian xuất data', 'Nguồn khách hàng', 'Nhóm khách hàng',
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-        'Cọc Khác', 'Tổng Cọc Học Thử',
-        '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt',
-        '% Tổng Cọc Học Thử'
+        'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử',
+        '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt'
     ]
     result_2 = result_2[cols_order]
-    
+
     int_cols = [
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-        'Cọc Khác', 'Tổng Cọc Học Thử'
+        'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử'
     ]
     result_2[int_cols] = result_2[int_cols].astype(int)
 
@@ -182,12 +178,12 @@ def compute_excel_percentages(df_excel):
     Tái sử dụng chung để tránh lặp logic toán học.
     """
     tot = df_excel['Tổng số Data']
+    base = df_excel['Tổng số data trừ sai số']
     df_excel['% Sai Số'] = (df_excel['Sai Số - Sai Đối Tượng'] / tot * 100).fillna(0)
-    df_excel['% Data Tiềm Năng Chưa Gọi'] = (df_excel['Tiềm Năng Chưa Gọi'] / tot * 100).fillna(0)
-    df_excel['% Data Trao Đổi Được'] = (df_excel['Data Trao Đổi Được'] / tot * 100).fillna(0)
-    df_excel['% Data Tiềm Năng'] = (df_excel['Data Tiềm Năng'] / tot * 100).fillna(0)
-    df_excel['% Data Cọc-Chốt'] = (df_excel['Data Cọc Chốt'] / tot * 100).fillna(0)
-    df_excel['% Tổng Cọc Học Thử'] = (df_excel['Tổng Cọc Học Thử'] / tot * 100).fillna(0)
+    df_excel['% Data Tiềm Năng Chưa Gọi'] = (df_excel['Tiềm Năng Chưa Gọi'] / base * 100).fillna(0)
+    df_excel['% Data Trao Đổi Được'] = (df_excel['Data Trao Đổi Được'] / base * 100).fillna(0)
+    df_excel['% Data Tiềm Năng'] = (df_excel['Data Tiềm Năng'] / base * 100).fillna(0)
+    df_excel['% Data Cọc-Chốt'] = (df_excel['Data Cọc Chốt'] / base * 100).fillna(0)
     return df_excel
 
 
@@ -211,17 +207,19 @@ def prepare_excel_report_1(df_edited):
             'Cọc Khác': df_excel['Cọc Khác'].sum(),
             'Tổng Cọc Học Thử': df_excel['Tổng Cọc Học Thử'].sum(),
         }
-        
+
+        total_row['Tổng số data trừ sai số'] = total_row['Tổng số Data'] - total_row['Sai Số - Sai Đối Tượng']
+
         tot_count = total_row['Tổng số Data']
+        base = total_row['Tổng số data trừ sai số']
         total_row['% Sai Số'] = (total_row['Sai Số - Sai Đối Tượng'] / tot_count * 100) if tot_count else 0
-        total_row['% Data Tiềm Năng Chưa Gọi'] = (total_row['Tiềm Năng Chưa Gọi'] / tot_count * 100) if tot_count else 0
-        total_row['% Data Trao Đổi Được'] = (total_row['Data Trao Đổi Được'] / tot_count * 100) if tot_count else 0
-        total_row['% Data Tiềm Năng'] = (total_row['Data Tiềm Năng'] / tot_count * 100) if tot_count else 0
-        total_row['% Data Cọc-Chốt'] = (total_row['Data Cọc Chốt'] / tot_count * 100) if tot_count else 0
-        total_row['% Tổng Cọc Học Thử'] = (total_row['Tổng Cọc Học Thử'] / tot_count * 100) if tot_count else 0
-        
+        total_row['% Data Tiềm Năng Chưa Gọi'] = (total_row['Tiềm Năng Chưa Gọi'] / base * 100) if base else 0
+        total_row['% Data Trao Đổi Được'] = (total_row['Data Trao Đổi Được'] / base * 100) if base else 0
+        total_row['% Data Tiềm Năng'] = (total_row['Data Tiềm Năng'] / base * 100) if base else 0
+        total_row['% Data Cọc-Chốt'] = (total_row['Data Cọc Chốt'] / base * 100) if base else 0
+
         df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
-        
+
     return df_excel
 
 
@@ -229,7 +227,7 @@ def prepare_excel_report_2(df_edited):
     """Tính toán bảng hoàn chỉnh gồm phần trăm và dòng tổng cộng cho Report 2 (dùng cho download Excel)."""
     df_excel = df_edited.copy()
     df_excel = compute_excel_percentages(df_excel)
-    
+
     if not df_excel.empty:
         total_row = {
             'Thời gian xuất data': df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else '',
@@ -244,15 +242,17 @@ def prepare_excel_report_2(df_edited):
             'Cọc Khác': df_excel['Cọc Khác'].sum(),
             'Tổng Cọc Học Thử': df_excel['Tổng Cọc Học Thử'].sum(),
         }
-        
+
+        total_row['Tổng số data trừ sai số'] = total_row['Tổng số Data'] - total_row['Sai Số - Sai Đối Tượng']
+
         tot_count = total_row['Tổng số Data']
+        base = total_row['Tổng số data trừ sai số']
         total_row['% Sai Số'] = (total_row['Sai Số - Sai Đối Tượng'] / tot_count * 100) if tot_count else 0
-        total_row['% Data Tiềm Năng Chưa Gọi'] = (total_row['Tiềm Năng Chưa Gọi'] / tot_count * 100) if tot_count else 0
-        total_row['% Data Trao Đổi Được'] = (total_row['Data Trao Đổi Được'] / tot_count * 100) if tot_count else 0
-        total_row['% Data Tiềm Năng'] = (total_row['Data Tiềm Năng'] / tot_count * 100) if tot_count else 0
-        total_row['% Data Cọc-Chốt'] = (total_row['Data Cọc Chốt'] / tot_count * 100) if tot_count else 0
-        total_row['% Tổng Cọc Học Thử'] = (total_row['Tổng Cọc Học Thử'] / tot_count * 100) if tot_count else 0
-        
+        total_row['% Data Tiềm Năng Chưa Gọi'] = (total_row['Tiềm Năng Chưa Gọi'] / base * 100) if base else 0
+        total_row['% Data Trao Đổi Được'] = (total_row['Data Trao Đổi Được'] / base * 100) if base else 0
+        total_row['% Data Tiềm Năng'] = (total_row['Data Tiềm Năng'] / base * 100) if base else 0
+        total_row['% Data Cọc-Chốt'] = (total_row['Data Cọc Chốt'] / base * 100) if base else 0
+
         df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
-        
+
     return df_excel

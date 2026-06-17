@@ -78,15 +78,6 @@ function(params){
 }
 """)
 
-style_pct_tongcoc = JsCode("""
-function(params){
-    var val = params.value;
-    if (val === undefined || val === null) return {};
-    if (val >= 18) return {'backgroundColor':'#ccffcc'};
-    if (val >= 15) return {'backgroundColor':'#fff2cc'};
-    return {'backgroundColor':'#ffcccc'};
-}
-""")
 
 # JS Getters dùng để tính toán tỉ lệ động ở cả dòng con và dòng tổng nhóm (group / total footers)
 getter_pct_saiso = JsCode("""
@@ -105,73 +96,72 @@ function(params) {
 
 getter_pct_tn_chua_goi = JsCode("""
 function(params) {
-    var val = 0, total = 0;
+    var val = 0, total = 0, saiSo = 0;
     if (params.node && params.node.group) {
         val = params.node.aggData ? (params.node.aggData['Tiềm Năng Chưa Gọi'] || 0) : 0;
         total = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
+        saiSo = params.node.aggData ? (params.node.aggData['Sai Số - Sai Đối Tượng'] || 0) : 0;
     } else {
         val = params.data ? (params.data['Tiềm Năng Chưa Gọi'] || 0) : 0;
         total = params.data ? (params.data['Tổng số Data'] || 0) : 0;
+        saiSo = params.data ? (params.data['Sai Số - Sai Đối Tượng'] || 0) : 0;
     }
-    return total ? (val / total * 100) : 0;
+    var base = total - saiSo;
+    return base > 0 ? (val / base * 100) : 0;
 }
 """)
 
 getter_pct_traodoi = JsCode("""
 function(params) {
-    var val = 0, total = 0;
+    var val = 0, total = 0, saiSo = 0;
     if (params.node && params.node.group) {
         val = params.node.aggData ? (params.node.aggData['Data Trao Đổi Được'] || 0) : 0;
         total = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
+        saiSo = params.node.aggData ? (params.node.aggData['Sai Số - Sai Đối Tượng'] || 0) : 0;
     } else {
         val = params.data ? (params.data['Data Trao Đổi Được'] || 0) : 0;
         total = params.data ? (params.data['Tổng số Data'] || 0) : 0;
+        saiSo = params.data ? (params.data['Sai Số - Sai Đối Tượng'] || 0) : 0;
     }
-    return total ? (val / total * 100) : 0;
+    var base = total - saiSo;
+    return base > 0 ? (val / base * 100) : 0;
 }
 """)
 
 getter_pct_tiemnang = JsCode("""
 function(params) {
-    var val = 0, total = 0;
+    var val = 0, total = 0, saiSo = 0;
     if (params.node && params.node.group) {
         val = params.node.aggData ? (params.node.aggData['Data Tiềm Năng'] || 0) : 0;
         total = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
+        saiSo = params.node.aggData ? (params.node.aggData['Sai Số - Sai Đối Tượng'] || 0) : 0;
     } else {
         val = params.data ? (params.data['Data Tiềm Năng'] || 0) : 0;
         total = params.data ? (params.data['Tổng số Data'] || 0) : 0;
+        saiSo = params.data ? (params.data['Sai Số - Sai Đối Tượng'] || 0) : 0;
     }
-    return total ? (val / total * 100) : 0;
+    var base = total - saiSo;
+    return base > 0 ? (val / base * 100) : 0;
 }
 """)
 
 getter_pct_coc = JsCode("""
 function(params) {
-    var val = 0, total = 0;
+    var val = 0, total = 0, saiSo = 0;
     if (params.node && params.node.group) {
         val = params.node.aggData ? (params.node.aggData['Data Cọc Chốt'] || 0) : 0;
         total = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
+        saiSo = params.node.aggData ? (params.node.aggData['Sai Số - Sai Đối Tượng'] || 0) : 0;
     } else {
         val = params.data ? (params.data['Data Cọc Chốt'] || 0) : 0;
         total = params.data ? (params.data['Tổng số Data'] || 0) : 0;
+        saiSo = params.data ? (params.data['Sai Số - Sai Đối Tượng'] || 0) : 0;
     }
-    return total ? (val / total * 100) : 0;
+    var base = total - saiSo;
+    return base > 0 ? (val / base * 100) : 0;
 }
 """)
 
-getter_pct_tongcoc = JsCode("""
-function(params) {
-    var val = 0, total = 0;
-    if (params.node && params.node.group) {
-        val = params.node.aggData ? (params.node.aggData['Tổng Cọc Học Thử'] || 0) : 0;
-        total = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
-    } else {
-        val = params.data ? (params.data['Tổng Cọc Học Thử'] || 0) : 0;
-        total = params.data ? (params.data['Tổng số Data'] || 0) : 0;
-    }
-    return total ? (val / total * 100) : 0;
-}
-""")
 
 # ==========================================
 # HÀM TIỆN ÍCH DÙNG CHUNG CHO BẢNG AGGRID
@@ -185,53 +175,46 @@ def configure_standard_grid_columns(gb, count_cols):
     # Cọc Khác, Tổng Cọc Học Thử có thể nhập tay
     gb.configure_column("Cọc Khác", editable=True, width=120)
     gb.configure_column("Tổng Cọc Học Thử", editable=True, width=170)
-    
+
     # Thiết lập hàm tính tổng (sum) cho các cột đếm
     for c in count_cols:
         gb.configure_column(c, aggFunc="sum", width=130 if len(c) < 15 else 160)
-        
+
     # Cấu hình các cột phần trăm tính toán động bằng valueGetter và tô màu theo cellStyle
     gb.configure_column(
-        "% Sai Số", 
-        valueGetter=getter_pct_saiso, 
-        cellStyle=style_pct_saiso, 
-        valueFormatter=pct_formatter, 
+        "% Sai Số",
+        valueGetter=getter_pct_saiso,
+        cellStyle=style_pct_saiso,
+        valueFormatter=pct_formatter,
         width=180
     )
     gb.configure_column(
-        "% Data Tiềm Năng Chưa Gọi", 
-        valueGetter=getter_pct_tn_chua_goi, 
-        cellStyle=style_pct_tn_chua_goi, 
-        valueFormatter=pct_formatter, 
+        "% Data Tiềm Năng Chưa Gọi",
+        valueGetter=getter_pct_tn_chua_goi,
+        cellStyle=style_pct_tn_chua_goi,
+        valueFormatter=pct_formatter,
         width=210
     )
     gb.configure_column(
-        "% Data Trao Đổi Được", 
-        valueGetter=getter_pct_traodoi, 
-        cellStyle=style_pct_traodoi, 
-        valueFormatter=pct_formatter, 
+        "% Data Trao Đổi Được",
+        valueGetter=getter_pct_traodoi,
+        cellStyle=style_pct_traodoi,
+        valueFormatter=pct_formatter,
         width=190
     )
     gb.configure_column(
-        "% Data Tiềm Năng", 
-        valueGetter=getter_pct_tiemnang, 
-        cellStyle=style_pct_tiemnang, 
-        valueFormatter=pct_formatter, 
+        "% Data Tiềm Năng",
+        valueGetter=getter_pct_tiemnang,
+        cellStyle=style_pct_tiemnang,
+        valueFormatter=pct_formatter,
         width=170
     )
     gb.configure_column(
-        "% Data Cọc-Chốt", 
-        valueGetter=getter_pct_coc, 
-        cellStyle=style_pct_coc, 
-        valueFormatter=pct_formatter, 
+        "% Data Cọc-Chốt",
+        valueGetter=getter_pct_coc,
+        cellStyle=style_pct_coc,
+        valueFormatter=pct_formatter,
         width=160
-    )
-    gb.configure_column(
-        "% Tổng Cọc Học Thử", 
-        valueGetter=getter_pct_tongcoc, 
-        cellStyle=style_pct_tongcoc, 
-        valueFormatter=pct_formatter, 
-        width=220
     )
 
 
@@ -244,19 +227,16 @@ def update_manual_inputs_in_state(grid_response, state_key, keys):
         updated_df = pd.DataFrame(grid_response['data'])
         if not updated_df.empty:
             if 'Cọc Khác' in updated_df.columns and 'Tổng Cọc Học Thử' in updated_df.columns:
-                # Tránh các dòng group/footer bằng cách loại bỏ dòng có key null
                 updated_clean = updated_df.dropna(subset=keys)
-                # Group by keys để lấy bản ghi đầu tiên hợp lệ của mỗi tổ hợp key
                 updated_clean = updated_clean.groupby(keys, as_index=False)[['Cọc Khác', 'Tổng Cọc Học Thử']].first()
-                
+
                 df_state = st.session_state[state_key]
                 orig_cols = list(df_state.columns)
-                
+
                 df_state_idx = df_state.set_index(keys)
                 updated_idx = updated_clean.set_index(keys)
-                
-                # Cập nhật các cột nhập tay vào session state
+
                 df_state_idx.update(updated_idx[['Cọc Khác', 'Tổng Cọc Học Thử']])
-                
+
                 df_updated = df_state_idx.reset_index()
                 st.session_state[state_key] = df_updated[orig_cols]

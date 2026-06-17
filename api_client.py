@@ -1,10 +1,10 @@
 """
-api_client.py — Module gọi API Getfly (tối ưu)
-- requests.Session reuse TCP keep-alive, giảm latency phân trang
-- 3 catalog function gộp thành 1 _fetch_catalog() generic
-- Retry logic gộp thành _request_with_retry() iterative
-- Xóa dead code: fetch_accounts (cached), _fetch_single_page (recursive)
-- ACCOUNT_FIELDS constant — xóa duplicate params
+api_client.py — Module gọi API Getfly
+Chứa tất cả các hàm giao tiếp với Getfly CRM API, bao gồm:
+- Lấy danh sách nhóm khách hàng (account_types)
+- Lấy danh sách nguồn khách hàng (account_sources)
+- Lấy danh sách người dùng (users)
+- Lấy dữ liệu học viên/accounts (có phân trang)
 """
 
 import streamlit as st
