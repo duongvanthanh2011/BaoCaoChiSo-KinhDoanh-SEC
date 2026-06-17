@@ -93,10 +93,10 @@ getter_pct_saiso = JsCode("""
 function(params) {
     var val = 0, total = 0;
     if (params.node && params.node.group) {
-        val = params.node.aggData ? (params.node.aggData['Sai Sót - Sai Đối Tượng'] || 0) : 0;
+        val = params.node.aggData ? (params.node.aggData['Sai Số - Sai Đối Tượng'] || 0) : 0;
         total = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
     } else {
-        val = params.data ? (params.data['Sai Sót - Sai Đối Tượng'] || 0) : 0;
+        val = params.data ? (params.data['Sai Số - Sai Đối Tượng'] || 0) : 0;
         total = params.data ? (params.data['Tổng số Data'] || 0) : 0;
     }
     return total ? (val / total * 100) : 0;

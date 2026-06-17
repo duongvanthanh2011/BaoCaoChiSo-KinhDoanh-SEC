@@ -22,7 +22,7 @@ def add_indicator_columns(df_filtered):
     
     # Các chỉ báo mới theo yêu cầu của người dùng
     df_filtered["SAI SỐ - SAI ĐỐI TƯỢNG"] = df_filtered["Mối quan hệ"].isin(["SAI SỐ", "SAI ĐỐI TƯỢNG.", "SAI SỐ - SAI ĐỐI TƯỢNG"]).astype(int)
-    df_filtered["TIỀM NĂNG CHƯA GỌI"]     = df_filtered["Mối quan hệ"].isin(["TIỀM NĂNG CHƯA GỌI CVHT", "TIỀM NĂNG CHƯA GỌI"]).astype(int)
+    df_filtered["TIỀM NĂNG CHƯA GỌI"]     = df_filtered["Mối quan hệ"].isin(["TIỀM NĂNG CHƯA GỌI CVHT"]).astype(int)
     
     return df_filtered
 
@@ -34,7 +34,7 @@ def compute_report_1(df_filtered):
     if df_filtered.empty:
         cols = [
             'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách', 
-            'Sai Sót - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+            'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
             'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
             'Cọc Khác', 'Tổng Cọc Học Thử',
             '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt',
@@ -59,7 +59,7 @@ def compute_report_1(df_filtered):
     )
 
     result.rename(columns={
-        "sai_so_sai_doi_tuong": "Sai Sót - Sai Đối Tượng",
+        "sai_so_sai_doi_tuong": "Sai Số - Sai Đối Tượng",
         "tiem_nang_chua_goi": "Tiềm Năng Chưa Gọi",
         "Data_trao_doi_duoc": "Data Trao Đổi Được",
         "Data_tiem_nang": "Data Tiềm Năng",
@@ -80,7 +80,7 @@ def compute_report_1(df_filtered):
 
     cols_order = [
         'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách', 
-        'Sai Sót - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
         'Cọc Khác', 'Tổng Cọc Học Thử',
         '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt',
@@ -89,7 +89,7 @@ def compute_report_1(df_filtered):
     result = result[cols_order]
     
     int_cols = [
-        'Sai Sót - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
         'Cọc Khác', 'Tổng Cọc Học Thử'
     ]
@@ -105,7 +105,7 @@ def compute_report_2(df_filtered):
     if df_filtered.empty:
         cols = [
             'Thời gian xuất data', 'Nguồn khách hàng', 'Nhóm khách hàng', 
-            'Sai Sót - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+            'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
             'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
             'Cọc Khác', 'Tổng Cọc Học Thử',
             '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt',
@@ -133,7 +133,7 @@ def compute_report_2(df_filtered):
     )
 
     result_2.rename(columns={
-        "sai_so_sai_doi_tuong": "Sai Sót - Sai Đối Tượng",
+        "sai_so_sai_doi_tuong": "Sai Số - Sai Đối Tượng",
         "tiem_nang_chua_goi": "Tiềm Năng Chưa Gọi",
         "Data_trao_doi_duoc": "Data Trao Đổi Được",
         "Data_tiem_nang": "Data Tiềm Năng",
@@ -154,7 +154,7 @@ def compute_report_2(df_filtered):
 
     cols_order = [
         'Thời gian xuất data', 'Nguồn khách hàng', 'Nhóm khách hàng', 
-        'Sai Sót - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
         'Cọc Khác', 'Tổng Cọc Học Thử',
         '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt',
@@ -163,7 +163,7 @@ def compute_report_2(df_filtered):
     result_2 = result_2[cols_order]
     
     int_cols = [
-        'Sai Sót - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
         'Cọc Khác', 'Tổng Cọc Học Thử'
     ]
@@ -182,7 +182,7 @@ def compute_excel_percentages(df_excel):
     Tái sử dụng chung để tránh lặp logic toán học.
     """
     tot = df_excel['Tổng số Data']
-    df_excel['% Sai Số'] = (df_excel['Sai Sót - Sai Đối Tượng'] / tot * 100).fillna(0)
+    df_excel['% Sai Số'] = (df_excel['Sai Số - Sai Đối Tượng'] / tot * 100).fillna(0)
     df_excel['% Data Tiềm Năng Chưa Gọi'] = (df_excel['Tiềm Năng Chưa Gọi'] / tot * 100).fillna(0)
     df_excel['% Data Trao Đổi Được'] = (df_excel['Data Trao Đổi Được'] / tot * 100).fillna(0)
     df_excel['% Data Tiềm Năng'] = (df_excel['Data Tiềm Năng'] / tot * 100).fillna(0)
@@ -202,7 +202,7 @@ def prepare_excel_report_1(df_edited):
             'ĐỢT HỌC THỬ': 'TỔNG CỘNG',
             'Phòng ban': '',
             'Người phụ trách': '',
-            'Sai Sót - Sai Đối Tượng': df_excel['Sai Sót - Sai Đối Tượng'].sum(),
+            'Sai Số - Sai Đối Tượng': df_excel['Sai Số - Sai Đối Tượng'].sum(),
             'Tiềm Năng Chưa Gọi': df_excel['Tiềm Năng Chưa Gọi'].sum(),
             'Data Trao Đổi Được': df_excel['Data Trao Đổi Được'].sum(),
             'Data Tiềm Năng': df_excel['Data Tiềm Năng'].sum(),
@@ -213,7 +213,7 @@ def prepare_excel_report_1(df_edited):
         }
         
         tot_count = total_row['Tổng số Data']
-        total_row['% Sai Số'] = (total_row['Sai Sót - Sai Đối Tượng'] / tot_count * 100) if tot_count else 0
+        total_row['% Sai Số'] = (total_row['Sai Số - Sai Đối Tượng'] / tot_count * 100) if tot_count else 0
         total_row['% Data Tiềm Năng Chưa Gọi'] = (total_row['Tiềm Năng Chưa Gọi'] / tot_count * 100) if tot_count else 0
         total_row['% Data Trao Đổi Được'] = (total_row['Data Trao Đổi Được'] / tot_count * 100) if tot_count else 0
         total_row['% Data Tiềm Năng'] = (total_row['Data Tiềm Năng'] / tot_count * 100) if tot_count else 0
@@ -235,7 +235,7 @@ def prepare_excel_report_2(df_edited):
             'Thời gian xuất data': df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else '',
             'Nguồn khách hàng': 'TỔNG CỘNG',
             'Nhóm khách hàng': '',
-            'Sai Sót - Sai Đối Tượng': df_excel['Sai Sót - Sai Đối Tượng'].sum(),
+            'Sai Số - Sai Đối Tượng': df_excel['Sai Số - Sai Đối Tượng'].sum(),
             'Tiềm Năng Chưa Gọi': df_excel['Tiềm Năng Chưa Gọi'].sum(),
             'Data Trao Đổi Được': df_excel['Data Trao Đổi Được'].sum(),
             'Data Tiềm Năng': df_excel['Data Tiềm Năng'].sum(),
@@ -246,7 +246,7 @@ def prepare_excel_report_2(df_edited):
         }
         
         tot_count = total_row['Tổng số Data']
-        total_row['% Sai Số'] = (total_row['Sai Sót - Sai Đối Tượng'] / tot_count * 100) if tot_count else 0
+        total_row['% Sai Số'] = (total_row['Sai Số - Sai Đối Tượng'] / tot_count * 100) if tot_count else 0
         total_row['% Data Tiềm Năng Chưa Gọi'] = (total_row['Tiềm Năng Chưa Gọi'] / tot_count * 100) if tot_count else 0
         total_row['% Data Trao Đổi Được'] = (total_row['Data Trao Đổi Được'] / tot_count * 100) if tot_count else 0
         total_row['% Data Tiềm Năng'] = (total_row['Data Tiềm Năng'] / tot_count * 100) if tot_count else 0

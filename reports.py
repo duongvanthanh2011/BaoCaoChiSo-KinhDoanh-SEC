@@ -67,7 +67,7 @@ def render_report_1(result):
     
     # Cấu hình các cột số lượng, nhập liệu và tỉ lệ KPI (tái sử dụng từ report_utils)
     count_cols = [
-        'Sai Sót - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
         'Cọc Khác', 'Tổng Cọc Học Thử'
     ]
@@ -137,7 +137,7 @@ def render_report_2(result_2):
     
     # Cấu hình các cột số lượng, nhập liệu và tỉ lệ KPI (tái sử dụng từ report_utils)
     count_cols = [
-        'Sai Sót - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
         'Cọc Khác', 'Tổng Cọc Học Thử'
     ]
