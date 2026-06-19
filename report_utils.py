@@ -206,6 +206,65 @@ function(params) {
 
 
 # ==========================================
+# FORMATTERS & STYLES CHO CÁC CỘT GỘP SỐ LƯỢNG & PHẦN TRĂM (TỐI ƯU HÓA)
+# ==========================================
+
+formatter_merged = JsCode("""
+function(params) {
+    var val = params.value || 0;
+    var field = params.colDef.field;
+    var baseField = (field === 'Sai Số - Sai Đối Tượng') ? 'Tổng số Data' : 'Tổng số data trừ sai số';
+    var base = 0;
+    if (params.node && params.node.group) {
+        base = params.node.aggData ? (params.node.aggData[baseField] || 0) : 0;
+    } else {
+        base = params.data ? (params.data[baseField] || 0) : 0;
+    }
+    var pct = base ? (val / base * 100) : 0;
+    return val + ' (' + pct.toFixed(2) + '%)';
+}
+""")
+
+style_merged = JsCode("""
+function(params) {
+    var val = params.value || 0;
+    var field = params.colDef.field;
+    var baseField = (field === 'Sai Số - Sai Đối Tượng') ? 'Tổng số Data' : 'Tổng số data trừ sai số';
+    var base = 0;
+    if (params.node && params.node.group) {
+        base = params.node.aggData ? (params.node.aggData[baseField] || 0) : 0;
+    } else {
+        base = params.data ? (params.data[baseField] || 0) : 0;
+    }
+    var pct = base ? (val / base * 100) : 0;
+    
+    if (field === 'Sai Số - Sai Đối Tượng') {
+        return pct > 5 ? {'backgroundColor':'#ffcccc'} : {'backgroundColor':'#ccffcc'};
+    }
+    if (field === 'Tiềm Năng Chưa Gọi') {
+        return pct > 0 ? {'backgroundColor':'#ffcccc'} : {'backgroundColor':'#ccffcc'};
+    }
+    if (field === 'Data Trao Đổi Được') {
+        if (pct >= 60) return {'backgroundColor':'#ccffcc'};
+        if (pct >= 50) return {'backgroundColor':'#fff2cc'};
+        return {'backgroundColor':'#ffcccc'};
+    }
+    if (field === 'Data Tiềm Năng') {
+        if (pct >= 30) return {'backgroundColor':'#ccffcc'};
+        if (pct >= 25) return {'backgroundColor':'#fff2cc'};
+        return {'backgroundColor':'#ffcccc'};
+    }
+    if (field === 'Data Cọc Chốt') {
+        if (pct >= 15) return {'backgroundColor':'#ccffcc'};
+        if (pct >= 12) return {'backgroundColor':'#fff2cc'};
+        return {'backgroundColor':'#ffcccc'};
+    }
+    return {};
+}
+""")
+
+
+# ==========================================
 # HÀM TIỆN ÍCH DÙNG CHUNG CHO BẢNG AGGRID
 # ==========================================
 
@@ -214,50 +273,62 @@ def configure_standard_grid_columns(gb, count_cols):
     Cấu hình các cột số lượng và cột tỷ lệ KPI chuẩn cho GridOptionsBuilder.
     Tái sử dụng cho cả Báo cáo 1 và Báo cáo 2 để loại bỏ lặp mã nguồn.
     """
+    # Cấu hình tự động xuống dòng cho header
+    gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
+
     # Cọc Khác, Tổng Cọc Học Thử có thể nhập tay
-    gb.configure_column("Cọc Khác", editable=True, width=120)
-    gb.configure_column("Tổng Cọc Học Thử", editable=True, width=170)
+    gb.configure_column("Cọc Khác", editable=True, width=100)
+    gb.configure_column("Tổng Cọc Học Thử", editable=True, width=120)
 
     # Thiết lập hàm tính tổng (sum) cho các cột đếm
     for c in count_cols:
-        gb.configure_column(c, aggFunc="sum", width=130 if len(c) < 15 else 160)
+        # Nếu cột đếm là cột cần gộp với phần trăm, ta sẽ định nghĩa cụ thể bên dưới
+        if c not in ["Sai Số - Sai Đối Tượng", "Tiềm Năng Chưa Gọi", "Data Trao Đổi Được", "Data Tiềm Năng", "Data Cọc Chốt"]:
+            gb.configure_column(c, aggFunc="sum", width=100 if len(c) < 15 else 115)
 
-    # Cấu hình các cột phần trăm tính toán động bằng valueGetter và tô màu theo cellStyle
+    # Cấu hình đặc biệt cho các cột số lượng gộp phần trăm
     gb.configure_column(
-        "% Sai Số",
-        valueGetter=getter_pct_saiso,
-        cellStyle=style_pct_saiso,
-        valueFormatter=pct_formatter,
-        width=180
+        "Sai Số - Sai Đối Tượng",
+        aggFunc="sum",
+        valueFormatter=formatter_merged,
+        cellStyle=style_merged,
+        width=120
     )
     gb.configure_column(
-        "% Data Tiềm Năng Chưa Gọi",
-        valueGetter=getter_pct_tn_chua_goi,
-        cellStyle=style_pct_tn_chua_goi,
-        valueFormatter=pct_formatter,
-        width=210
+        "Tiềm Năng Chưa Gọi",
+        aggFunc="sum",
+        valueFormatter=formatter_merged,
+        cellStyle=style_merged,
+        width=120
     )
     gb.configure_column(
-        "% Data Trao Đổi Được",
-        valueGetter=getter_pct_traodoi,
-        cellStyle=style_pct_traodoi,
-        valueFormatter=pct_formatter,
-        width=190
+        "Data Trao Đổi Được",
+        aggFunc="sum",
+        valueFormatter=formatter_merged,
+        cellStyle=style_merged,
+        width=120
     )
     gb.configure_column(
-        "% Data Tiềm Năng",
-        valueGetter=getter_pct_tiemnang,
-        cellStyle=style_pct_tiemnang,
-        valueFormatter=pct_formatter,
-        width=170
+        "Data Tiềm Năng",
+        aggFunc="sum",
+        valueFormatter=formatter_merged,
+        cellStyle=style_merged,
+        width=120
     )
     gb.configure_column(
-        "% Data Cọc-Chốt",
-        valueGetter=getter_pct_coc,
-        cellStyle=style_pct_coc,
-        valueFormatter=pct_formatter,
-        width=160
+        "Data Cọc Chốt",
+        aggFunc="sum",
+        valueFormatter=formatter_merged,
+        cellStyle=style_merged,
+        width=120
     )
+
+    # Ẩn các cột phần trăm cũ trên UI của AgGrid
+    gb.configure_column("% Sai Số", hide=True)
+    gb.configure_column("% Data Tiềm Năng Chưa Gọi", hide=True)
+    gb.configure_column("% Data Trao Đổi Được", hide=True)
+    gb.configure_column("% Data Tiềm Năng", hide=True)
+    gb.configure_column("% Data Cọc-Chốt", hide=True)
 
 
 def configure_report2_grid_columns(gb, count_cols):
@@ -265,23 +336,26 @@ def configure_report2_grid_columns(gb, count_cols):
     Cấu hình các cột cho Báo cáo 2: Nguồn, Tổng số Data, Data order (nhập tay),
     và 2 cột % tính toán động.
     """
-    for c in count_cols:
-        gb.configure_column(c, aggFunc="sum", width=150)
+    # Cấu hình tự động xuống dòng cho header
+    gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
 
-    gb.configure_column("Data order", editable=True, aggFunc="sum", width=140)
+    for c in count_cols:
+        gb.configure_column(c, aggFunc="sum", width=110)
+
+    gb.configure_column("Data order", editable=True, aggFunc="sum", width=110)
 
     gb.configure_column(
         "% data đã chia / 50% data order",
         valueGetter=getter_pct_r2_half,
         valueFormatter=pct_formatter,
-        width=240
+        width=160
     )
     gb.configure_column(
         "% data đã chia / data order",
         valueGetter=getter_pct_r2_full,
         cellStyle=style_pct_r2_full,
         valueFormatter=pct_formatter,
-        width=240
+        width=160
     )
 
 
