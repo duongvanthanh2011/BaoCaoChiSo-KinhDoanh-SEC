@@ -4,3 +4,5 @@ openpyxl
 matplotlib
 python-dotenv
 requests
+streamlit-aggrid
+supabase

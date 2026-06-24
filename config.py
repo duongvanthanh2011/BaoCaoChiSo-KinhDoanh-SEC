@@ -35,3 +35,19 @@ def get_headers(api_key):
         "X-API-KEY": api_key,
         "Content-Type": "application/json"
     }
+
+
+def get_supabase_url():
+    """Lấy Supabase URL từ biến môi trường hoặc Streamlit secrets."""
+    url = os.getenv("SUPABASE_URL")
+    if not url and "SUPABASE_URL" in st.secrets:
+        url = st.secrets["SUPABASE_URL"]
+    return url
+
+
+def get_supabase_key():
+    """Lấy Supabase API key từ biến môi trường hoặc Streamlit secrets."""
+    key = os.getenv("SUPABASE_KEY")
+    if not key and "SUPABASE_KEY" in st.secrets:
+        key = st.secrets["SUPABASE_KEY"]
+    return key

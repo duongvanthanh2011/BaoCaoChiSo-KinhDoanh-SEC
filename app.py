@@ -13,6 +13,8 @@ from config import get_api_key, get_url_base, get_headers
 from api_client import get_account_types, get_account_sources, get_users, fetch_accounts
 from data_processing import expand_source_ids, build_filtering_conditions, transform_dataframe, build_department_options, build_user_ids_by_departments
 from reports import add_indicator_columns, compute_report_1, compute_report_2, render_report_1, render_report_2
+from supabase_client import save_raw_records, save_report_result
+from error_tracking import render_error_tracking_tab
 
 # ==========================================
 # KHỞI TẠO CẤU HÌNH
@@ -33,10 +35,23 @@ st.title("📊 Tổng hợp & Phân tích Dữ liệu Học viên (Tích hợp A
 # Khởi tạo session state để lưu trữ dữ liệu sau khi lấy từ API nhằm hỗ trợ bộ lọc hậu kỳ (post-filter)
 if "raw_df" not in st.session_state:
     st.session_state["raw_df"] = None
+if "raw_records" not in st.session_state:
+    st.session_state["raw_records"] = None
 if "filtered_src_ids" not in st.session_state:
     st.session_state["filtered_src_ids"] = []
 if "filtered_type_ids" not in st.session_state:
     st.session_state["filtered_type_ids"] = []
+if "fetch_time" not in st.session_state:
+    st.session_state["fetch_time"] = ""
+# Khóa trạng thái loading — ngăn người dùng nhấn nút nhiều lần
+if "is_loading" not in st.session_state:
+    st.session_state["is_loading"] = False
+# Fetch key — hash của bộ lọc đã dùng, tránh tải lại cùng bộ lọc
+if "last_fetch_key" not in st.session_state:
+    st.session_state["last_fetch_key"] = ""
+# Bộ lọc cuối cùng đã dùng (để lưu vào Supabase)
+if "last_filters" not in st.session_state:
+    st.session_state["last_filters"] = None
 
 if not API_KEY:
     st.warning("⚠️ Chưa cấu hình `GETFLY_API_KEY` trong file `.env`. Hãy cấu hình để sử dụng đầy đủ chức năng.")
@@ -120,9 +135,12 @@ if submitted:
         df = transform_dataframe(df, src_ids, type_ids, account_types_list, users_list)
 
         st.session_state["raw_df"] = df
+        st.session_state["raw_records"] = all_records
         st.session_state["fetch_time"] = datetime.now().strftime("%Hh%M ngày %d/%m")
         st.session_state["filtered_src_ids"] = src_ids
         st.session_state["filtered_type_ids"] = type_ids
+        st.session_state["last_fetch_key"] = str(filtering_conditions)
+        st.session_state["last_filters"] = filtering_conditions
         st.success(f"Đã tải thành công {len(df)} bản ghi từ hệ thống.")
 
 # ==========================================
@@ -161,11 +179,31 @@ if st.session_state["raw_df"] is not None:
 
     st.success("Tạo báo cáo thành công!")
 
-    # Hiển thị báo cáo trong 2 tab
-    tab1, tab2 = st.tabs(["📋 Báo cáo 1: Theo Đợt học thử & Người phụ trách", "🌐 Báo cáo 2: Theo Nguồn khách hàng & Nhóm"])
+    # --- Nút lưu Raw Data vào Supabase ---
+    if st.session_state.get("raw_records"):
+        if st.button("💾 Lưu dữ liệu thô vào Database", key="btn_save_raw"):
+            with st.spinner("Đang lưu dữ liệu thô vào Supabase..."):
+                success, msg = save_raw_records(
+                    st.session_state["raw_records"],
+                    filters_used=st.session_state.get("last_filters")
+                )
+            if success:
+                st.success(msg)
+            else:
+                st.error(msg)
+
+    # Hiển thị báo cáo trong 3 tab
+    tab1, tab2, tab3 = st.tabs([
+        "📋 Báo cáo 1: Theo Đợt học thử & Người phụ trách",
+        "🌐 Báo cáo 2: Theo Nguồn khách hàng & Nhóm",
+        "🔴 Theo dõi Dữ liệu Lỗi"
+    ])
 
     with tab1:
         render_report_1(result)
 
     with tab2:
         render_report_2(result_2)
+
+    with tab3:
+        render_error_tracking_tab()

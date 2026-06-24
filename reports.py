@@ -25,6 +25,7 @@ from report_calculations import (
     prepare_excel_report_1,
     prepare_excel_report_2
 )
+from supabase_client import save_report_result
 
 # Re-export để app.py import trực tiếp không bị lỗi
 __all__ = [
@@ -107,6 +108,18 @@ def render_report_1(result):
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
+    # Nút lưu vào Supabase
+    if st.button("💾 Lưu Báo cáo 1 vào Database", key="btn_save_report_1"):
+        with st.spinner("Đang lưu Báo cáo 1 vào Supabase..."):
+            success, msg = save_report_result(
+                report_type="report_1",
+                df_report=st.session_state[state_key]
+            )
+        if success:
+            st.success(msg)
+        else:
+            st.error(msg)
+
 
 def render_report_2(result_2):
     """Hiển thị Báo cáo 2 bằng bảng phân cấp AgGrid hỗ trợ chỉnh sửa và tính toán động."""
@@ -176,3 +189,15 @@ def render_report_2(result_2):
         file_name="Bao_cao_Nguon_Khach_Hang.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+    # Nút lưu vào Supabase
+    if st.button("💾 Lưu Báo cáo 2 vào Database", key="btn_save_report_2"):
+        with st.spinner("Đang lưu Báo cáo 2 vào Supabase..."):
+            success, msg = save_report_result(
+                report_type="report_2",
+                df_report=st.session_state[state_key]
+            )
+        if success:
+            st.success(msg)
+        else:
+            st.error(msg)
