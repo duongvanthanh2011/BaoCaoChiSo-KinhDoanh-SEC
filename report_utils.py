@@ -162,6 +162,23 @@ function(params) {
 }
 """)
 
+getter_pct_tong_coc = JsCode("""
+function(params) {
+    var val = 0, total = 0, saiSo = 0;
+    if (params.node && params.node.group) {
+        val = params.node.aggData ? (params.node.aggData['Tổng Cọc Học Thử'] || 0) : 0;
+        total = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
+        saiSo = params.node.aggData ? (params.node.aggData['Sai Số - Sai Đối Tượng'] || 0) : 0;
+    } else {
+        val = params.data ? (params.data['Tổng Cọc Học Thử'] || 0) : 0;
+        total = params.data ? (params.data['Tổng số Data'] || 0) : 0;
+        saiSo = params.data ? (params.data['Sai Số - Sai Đối Tượng'] || 0) : 0;
+    }
+    var base = total - saiSo;
+    return base > 0 ? (val / base * 100) : 0;
+}
+""")
+
 # ==========================================
 # JS GETTERS & STYLES CHO BÁO CÁO 2 (% data đã chia)
 # ==========================================
@@ -301,6 +318,7 @@ def configure_standard_grid_columns(gb, count_cols):
     # Cấu hình đặc biệt cho các cột số lượng gộp phần trăm
     gb.configure_column(
         "Sai Số - Sai Đối Tượng",
+        headerName="% sai số-sai đối tượng/ Tổng data đã chia",
         aggFunc="sum",
         valueFormatter=formatter_merged,
         cellStyle=style_merged,
@@ -308,6 +326,7 @@ def configure_standard_grid_columns(gb, count_cols):
     )
     gb.configure_column(
         "Tiềm Năng Chưa Gọi",
+        headerName="% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng",
         aggFunc="sum",
         valueFormatter=formatter_merged,
         cellStyle=style_merged,
@@ -315,6 +334,7 @@ def configure_standard_grid_columns(gb, count_cols):
     )
     gb.configure_column(
         "Data Trao Đổi Được",
+        headerName="% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng",
         aggFunc="sum",
         valueFormatter=formatter_merged,
         cellStyle=style_merged,
@@ -322,6 +342,7 @@ def configure_standard_grid_columns(gb, count_cols):
     )
     gb.configure_column(
         "Data Tiềm Năng",
+        headerName="% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng",
         aggFunc="sum",
         valueFormatter=formatter_merged,
         cellStyle=style_merged,
@@ -329,6 +350,7 @@ def configure_standard_grid_columns(gb, count_cols):
     )
     gb.configure_column(
         "Data Cọc Chốt",
+        headerName="% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng",
         aggFunc="sum",
         valueFormatter=formatter_merged,
         cellStyle=style_merged,
@@ -336,11 +358,19 @@ def configure_standard_grid_columns(gb, count_cols):
     )
 
     # Ẩn các cột phần trăm cũ trên UI của AgGrid
-    gb.configure_column("% Sai Số", hide=True)
-    gb.configure_column("% Data Tiềm Năng Chưa Gọi", hide=True)
-    gb.configure_column("% Data Trao Đổi Được", hide=True)
-    gb.configure_column("% Data Tiềm Năng", hide=True)
-    gb.configure_column("% Data Cọc-Chốt", hide=True)
+    gb.configure_column("% sai số-sai đối tượng/ Tổng data đã chia", hide=True)
+    gb.configure_column("% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
+    gb.configure_column("% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
+    gb.configure_column("% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
+    gb.configure_column("% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
+
+    # Hiển thị cột % Tổng cọc buổi học thử
+    gb.configure_column(
+        "% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng",
+        valueGetter=getter_pct_tong_coc,
+        valueFormatter=pct_formatter,
+        width=160
+    )
 
 
 def configure_report2_grid_columns(gb, count_cols):

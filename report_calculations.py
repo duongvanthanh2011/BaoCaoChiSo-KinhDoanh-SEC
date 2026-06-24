@@ -38,7 +38,12 @@ def compute_report_1(df_filtered):
             'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
             'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
             'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử',
-            '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt'
+            '% sai số-sai đối tượng/ Tổng data đã chia', 
+            '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng', 
+            '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng', 
+            '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng', 
+            '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng',
+            '% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng'
         ]
         return pd.DataFrame(columns=cols)
 
@@ -72,18 +77,24 @@ def compute_report_1(df_filtered):
     result['Cọc Khác'] = 0
     result['Tổng Cọc Học Thử'] = 0
 
-    result['% Sai Số'] = 0.0
-    result['% Data Tiềm Năng Chưa Gọi'] = 0.0
-    result['% Data Trao Đổi Được'] = 0.0
-    result['% Data Tiềm Năng'] = 0.0
-    result['% Data Cọc-Chốt'] = 0.0
+    result['% sai số-sai đối tượng/ Tổng data đã chia'] = 0.0
+    result['% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
+    result['% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
+    result['% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
+    result['% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
+    result['% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
 
     cols_order = [
         'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách',
         'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
         'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử',
-        '% Sai Số', '% Data Tiềm Năng Chưa Gọi', '% Data Trao Đổi Được', '% Data Tiềm Năng', '% Data Cọc-Chốt'
+        '% sai số-sai đối tượng/ Tổng data đã chia', 
+        '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng', 
+        '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng', 
+        '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng', 
+        '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng',
+        '% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng'
     ]
     result = result[cols_order]
 
@@ -159,11 +170,14 @@ def compute_excel_percentages(df_excel):
     """
     tot = df_excel['Tổng số Data']
     base = df_excel['Tổng số data trừ sai số']
-    df_excel['% Sai Số'] = (df_excel['Sai Số - Sai Đối Tượng'] / tot * 100).fillna(0)
-    df_excel['% Data Tiềm Năng Chưa Gọi'] = (df_excel['Tiềm Năng Chưa Gọi'] / base * 100).fillna(0)
-    df_excel['% Data Trao Đổi Được'] = (df_excel['Data Trao Đổi Được'] / base * 100).fillna(0)
-    df_excel['% Data Tiềm Năng'] = (df_excel['Data Tiềm Năng'] / base * 100).fillna(0)
-    df_excel['% Data Cọc-Chốt'] = (df_excel['Data Cọc Chốt'] / base * 100).fillna(0)
+    df_excel['% sai số-sai đối tượng/ Tổng data đã chia'] = (df_excel['Sai Số - Sai Đối Tượng'] / tot * 100).fillna(0)
+    df_excel['% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Tiềm Năng Chưa Gọi'] / base * 100).fillna(0)
+    df_excel['% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Data Trao Đổi Được'] / base * 100).fillna(0)
+    df_excel['% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Data Tiềm Năng'] / base * 100).fillna(0)
+    df_excel['% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Data Cọc Chốt'] / base * 100).fillna(0)
+    
+    tong_coc = pd.to_numeric(df_excel.get('Tổng Cọc Học Thử', 0), errors='coerce').fillna(0)
+    df_excel['% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng'] = (tong_coc / base * 100).fillna(0)
     return df_excel
 
 
@@ -192,11 +206,12 @@ def prepare_excel_report_1(df_edited):
 
         tot_count = total_row['Tổng số Data']
         base = total_row['Tổng số data trừ sai số']
-        total_row['% Sai Số'] = (total_row['Sai Số - Sai Đối Tượng'] / tot_count * 100) if tot_count else 0
-        total_row['% Data Tiềm Năng Chưa Gọi'] = (total_row['Tiềm Năng Chưa Gọi'] / base * 100) if base else 0
-        total_row['% Data Trao Đổi Được'] = (total_row['Data Trao Đổi Được'] / base * 100) if base else 0
-        total_row['% Data Tiềm Năng'] = (total_row['Data Tiềm Năng'] / base * 100) if base else 0
-        total_row['% Data Cọc-Chốt'] = (total_row['Data Cọc Chốt'] / base * 100) if base else 0
+        total_row['% sai số-sai đối tượng/ Tổng data đã chia'] = (total_row['Sai Số - Sai Đối Tượng'] / tot_count * 100) if tot_count else 0
+        total_row['% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng'] = (total_row['Tiềm Năng Chưa Gọi'] / base * 100) if base else 0
+        total_row['% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng'] = (total_row['Data Trao Đổi Được'] / base * 100) if base else 0
+        total_row['% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng'] = (total_row['Data Tiềm Năng'] / base * 100) if base else 0
+        total_row['% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng'] = (total_row['Data Cọc Chốt'] / base * 100) if base else 0
+        total_row['% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng'] = (total_row.get('Tổng Cọc Học Thử', 0) / base * 100) if base else 0
 
         df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
 
