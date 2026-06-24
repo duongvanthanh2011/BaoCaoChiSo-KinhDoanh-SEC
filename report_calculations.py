@@ -23,7 +23,7 @@ def add_indicator_columns(df_filtered):
     
     # Các chỉ báo mới theo yêu cầu của người dùng
     df_filtered["SAI SỐ - SAI ĐỐI TƯỢNG"] = df_filtered["Mối quan hệ"].isin(["SAI SỐ", "SAI ĐỐI TƯỢNG.", "SAI SỐ - SAI ĐỐI TƯỢNG"]).astype(int)
-    df_filtered["TIỀM NĂNG CHƯA GỌI"]     = df_filtered["Mối quan hệ"].isin(["TIỀM NĂNG CHƯA GỌI CVHT"]).astype(int)
+    df_filtered["TIỀM NĂNG CHƯA GỌI"]     = df_filtered["Mối quan hệ"].isin(["TIỀM NĂNG CHƯA GỌI CVHT", "DATA CHƯA GỌI CVHT"]).astype(int)
     
     return df_filtered
 
@@ -104,7 +104,7 @@ def compute_report_2(df_filtered):
     if df_filtered.empty:
         cols = [
             'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn',
-            'Tổng số Data', 'Data order',
+            'Tổng số Data', 'Data order', '50% data order',
             '% data đã chia / 50% data order', '% data đã chia / data order'
         ]
         return pd.DataFrame(columns=cols)
@@ -130,13 +130,14 @@ def compute_report_2(df_filtered):
 
     result_2['Thời gian xuất data'] = fetch_time
     result_2['Data order'] = 0
+    result_2['50% data order'] = 0.0
 
     result_2['% data đã chia / 50% data order'] = 0.0
     result_2['% data đã chia / data order'] = 0.0
 
     cols_order = [
         'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn',
-        'Tổng số Data', 'Data order',
+        'Tổng số Data', 'Data order', '50% data order',
         '% data đã chia / 50% data order', '% data đã chia / data order'
     ]
     result_2 = result_2[cols_order]
@@ -209,6 +210,7 @@ def prepare_excel_report_2(df_edited):
     # Tính % trên từng dòng
     data_order = df_excel['Data order'].replace(0, float('nan'))
     half_order = data_order * 0.5
+    df_excel['50% data order'] = half_order.fillna(0)
     df_excel['% data đã chia / 50% data order'] = (df_excel['Tổng số Data'] / half_order * 100).fillna(0)
     df_excel['% data đã chia / data order'] = (df_excel['Tổng số Data'] / data_order * 100).fillna(0)
 
@@ -223,6 +225,7 @@ def prepare_excel_report_2(df_edited):
             'Nguồn': '',
             'Tổng số Data': total_data,
             'Data order': total_order,
+            '50% data order': half_total,
             '% data đã chia / 50% data order': (total_data / half_total * 100) if half_total else 0,
             '% data đã chia / data order': (total_data / total_order * 100) if total_order else 0,
         }

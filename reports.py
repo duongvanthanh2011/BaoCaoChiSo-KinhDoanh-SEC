@@ -171,6 +171,7 @@ def render_report_2(result_2):
             'Nguồn': '📊 TỔNG DATA XUẤT RA',
             'Tổng số Data': total_data,
             'Data order': 0,
+            '50% data order': 0,
         }
         grid_options["pinnedTopRowData"] = [pinned_row]
 

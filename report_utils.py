@@ -181,6 +181,18 @@ function(params) {
 }
 """)
 
+getter_half_order = JsCode("""
+function(params) {
+    var dataOrder = 0;
+    if (params.node && params.node.group) {
+        dataOrder = params.node.aggData ? (params.node.aggData['Data order'] || 0) : 0;
+    } else {
+        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
+    }
+    return dataOrder * 0.5;
+}
+""")
+
 getter_pct_r2_full = JsCode("""
 function(params) {
     var totalData = 0, dataOrder = 0;
@@ -343,6 +355,12 @@ def configure_report2_grid_columns(gb, count_cols):
         gb.configure_column(c, aggFunc="sum", width=110)
 
     gb.configure_column("Data order", editable=True, aggFunc="sum", width=110)
+
+    gb.configure_column(
+        "50% data order",
+        valueGetter=getter_half_order,
+        width=130
+    )
 
     gb.configure_column(
         "% data đã chia / 50% data order",
