@@ -17,7 +17,8 @@ from st_aggrid import AgGrid
 from st_aggrid.grid_options_builder import GridOptionsBuilder
 
 # Import các phần từ các module con
-from report_utils import configure_standard_grid_columns, configure_report2_grid_columns, update_manual_inputs_in_state
+from report_utils import configure_standard_grid_columns, configure_report2_grid_columns
+from report_components import render_dot_manual_inputs
 from report_calculations import (
     add_indicator_columns, 
     compute_report_1, 
@@ -41,22 +42,37 @@ def render_report_1(result):
     st.subheader("Bản xem trước: Báo cáo theo Đợt học thử & Người phụ trách")
     
     state_key = "report_1_edited_df"
+    dot_manual_key = "report_1_dot_manual"
+
+    # Báo cáo 1 không còn nhập tay trực tiếp trong AgGrid, nên luôn dùng số liệu mới nhất.
+    df_to_show = result.copy()
     
-    # Khởi tạo hoặc reset trạng thái chỉnh sửa
-    if state_key not in st.session_state or st.session_state[state_key] is None:
-        st.session_state[state_key] = result.copy()
-    else:
-        # Nếu khóa nhóm hoặc số dòng thay đổi (do thay đổi bộ lọc), reset dữ liệu chỉnh sửa
-        current_state = st.session_state[state_key]
-        if (len(current_state) != len(result) or 
-            not (current_state['ĐỢT HỌC THỬ'].equals(result['ĐỢT HỌC THỬ']) and 
-                 current_state['Phòng ban'].equals(result['Phòng ban']) and
-                 current_state['Người phụ trách'].equals(result['Người phụ trách']))):
-            st.session_state[state_key] = result.copy()
-            
-    df_to_show = st.session_state[state_key]
+    # ====== BẢNG NHẬP TAY CỌC KHÁC & TỔNG CỌC HỌC THỬ THEO ĐỢT ======
+    unique_dots = sorted(df_to_show['ĐỢT HỌC THỬ'].unique().tolist())
     
-    # Xây dựng GridOptions cho AgGrid
+    dot_manual_df, manual_hash = render_dot_manual_inputs(
+        "✏️ Nhập Cọc Khác & Tổng Cọc Học Thử theo Đợt học thử",
+        dot_manual_key,
+        unique_dots,
+        ['Cọc Khác', 'Tổng Cọc Học Thử'],
+        {
+            'Cọc Khác': 'report_1_coc_khac',
+            'Tổng Cọc Học Thử': 'report_1_tong_coc_ht',
+        },
+    )
+    
+    # Phân bổ giá trị nhập tay vào dòng đầu tiên mỗi đợt (để aggFunc sum hoạt động đúng ở group footer)
+    df_to_show['Cọc Khác'] = 0
+    df_to_show['Tổng Cọc Học Thử'] = 0
+    for _, row in dot_manual_df.iterrows():
+        dot_mask = df_to_show['ĐỢT HỌC THỬ'] == row['ĐỢT HỌC THỬ']
+        if dot_mask.any():
+            first_idx = df_to_show[dot_mask].index[0]
+            df_to_show.at[first_idx, 'Cọc Khác'] = int(row['Cọc Khác'])
+            df_to_show.at[first_idx, 'Tổng Cọc Học Thử'] = int(row['Tổng Cọc Học Thử'])
+    st.session_state[state_key] = df_to_show
+    
+    # ====== XÂY DỰNG GRIDOPTIONS CHO AGGRID ======
     gb = GridOptionsBuilder.from_dataframe(df_to_show)
     
     # Thiết lập nhóm phân cấp
@@ -79,10 +95,12 @@ def render_report_1(result):
     grid_options["groupDefaultExpanded"] = -1
     grid_options["suppressAggFuncInHeader"] = True
 
-    # Dòng tổng cố định ở đầu bảng (pinned top row)
+    # Dòng tổng cố định ở đầu bảng — tổng từ bảng nhập tay theo đợt
     if not df_to_show.empty:
         total_sai_so = int(df_to_show['Sai Số - Sai Đối Tượng'].sum())
         total_data = int(df_to_show['Tổng số Data'].sum())
+        total_coc_khac = int(dot_manual_df['Cọc Khác'].sum()) if not dot_manual_df.empty else 0
+        total_tong_coc = int(dot_manual_df['Tổng Cọc Học Thử'].sum()) if not dot_manual_df.empty else 0
         pinned_row = {
             'Thời gian xuất data': df_to_show['Thời gian xuất data'].iloc[0],
             'Người phụ trách': '📊 TỔNG DATA XUẤT RA',
@@ -93,27 +111,25 @@ def render_report_1(result):
             'Data Cọc Chốt': int(df_to_show['Data Cọc Chốt'].sum()),
             'Tổng số Data': total_data,
             'Tổng số data trừ sai số': total_data - total_sai_so,
-            'Cọc Khác': int(df_to_show['Cọc Khác'].sum()),
-            'Tổng Cọc Học Thử': int(df_to_show['Tổng Cọc Học Thử'].sum()),
+            'Cọc Khác': total_coc_khac,
+            'Tổng Cọc Học Thử': total_tong_coc,
         }
         grid_options["pinnedTopRowData"] = [pinned_row]
 
     # Hiển thị AgGrid
-    grid_response = AgGrid(
+    AgGrid(
         df_to_show,
         gridOptions=grid_options,
         enable_enterprise_modules=True,
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=True,
         height=550,
-        key="grid_report_1"
+        server_sync_strategy="server_wins",
+        key=f"grid_report_1_v3_{manual_hash}"
     )
 
-    # Lưu lại thay đổi nhập tay từ người dùng vào session state
-    update_manual_inputs_in_state(grid_response, state_key, ['ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách'])
-
     # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
-    df_excel = prepare_excel_report_1(st.session_state[state_key])
+    df_excel = prepare_excel_report_1(st.session_state[state_key], dot_manual_df)
     
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
@@ -132,18 +148,29 @@ def render_report_2(result_2):
     st.subheader("Bản xem trước: Báo cáo theo Đợt học thử & Nguồn khách hàng")
 
     state_key = "report_2_edited_df"
+    dot_manual_key = "report_2_dot_manual"
 
-    # Khởi tạo hoặc reset trạng thái chỉnh sửa
-    if state_key not in st.session_state or st.session_state[state_key] is None:
-        st.session_state[state_key] = result_2.copy()
-    else:
-        current_state = st.session_state[state_key]
-        if (len(current_state) != len(result_2) or
-            not (current_state['ĐỢT HỌC THỬ'].equals(result_2['ĐỢT HỌC THỬ']) and
-                 current_state['Nguồn'].equals(result_2['Nguồn']))):
-            st.session_state[state_key] = result_2.copy()
+    df_to_show = result_2.copy()
 
-    df_to_show = st.session_state[state_key]
+    # ====== BẢNG NHẬP TAY DATA ORDER THEO ĐỢT ======
+    unique_dots = sorted(df_to_show['ĐỢT HỌC THỬ'].unique().tolist())
+    dot_manual_df, manual_hash = render_dot_manual_inputs(
+        "✏️ Nhập Data order theo Đợt học thử",
+        dot_manual_key,
+        unique_dots,
+        ['Data order'],
+        {'Data order': 'report_2_data_order'},
+    )
+
+    # Data order thuộc cấp đợt, không nhập ở cấp nguồn.
+    df_to_show['Data order'] = 0
+    df_to_show['50% data order'] = 0.0
+    for _, row in dot_manual_df.iterrows():
+        dot_mask = df_to_show['ĐỢT HỌC THỬ'] == row['ĐỢT HỌC THỬ']
+        if dot_mask.any():
+            first_idx = df_to_show[dot_mask].index[0]
+            df_to_show.at[first_idx, 'Data order'] = int(row['Data order'])
+    st.session_state[state_key] = df_to_show
 
     # Xây dựng GridOptions cho AgGrid
     gb = GridOptionsBuilder.from_dataframe(df_to_show)
@@ -166,34 +193,31 @@ def render_report_2(result_2):
     # Dòng tổng cố định ở đầu bảng (pinned top row)
     if not df_to_show.empty:
         total_data = int(df_to_show['Tổng số Data'].sum())
+        total_order = int(dot_manual_df['Data order'].sum()) if not dot_manual_df.empty else 0
+        half_total = total_order * 0.5
         pinned_row = {
             'Thời gian xuất data': df_to_show['Thời gian xuất data'].iloc[0],
             'Nguồn': '📊 TỔNG DATA XUẤT RA',
             'Tổng số Data': total_data,
-            'Data order': 0,
-            '50% data order': 0,
+            'Data order': total_order,
+            '50% data order': half_total,
         }
         grid_options["pinnedTopRowData"] = [pinned_row]
 
     # Hiển thị AgGrid
-    grid_response = AgGrid(
+    AgGrid(
         df_to_show,
         gridOptions=grid_options,
         enable_enterprise_modules=True,
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=True,
         height=550,
-        key="grid_report_2"
-    )
-
-    # Lưu lại thay đổi nhập tay "Data order" từ người dùng
-    update_manual_inputs_in_state(
-        grid_response, state_key, ['ĐỢT HỌC THỬ', 'Nguồn'],
-        editable_cols=['Data order']
+        server_sync_strategy="server_wins",
+        key=f"grid_report_2_v2_{manual_hash}"
     )
 
     # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
-    df_excel = prepare_excel_report_2(st.session_state[state_key])
+    df_excel = prepare_excel_report_2(st.session_state[state_key], dot_manual_df)
 
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:

@@ -8,13 +8,13 @@ Chạy: streamlit run app.py
 import streamlit as st
 import hashlib
 import json
-from datetime import datetime
 
 # Import các module nội bộ
 from config import get_api_key, get_url_base, get_headers
 from api_client import get_account_types, get_account_sources, get_users, fetch_accounts_with_progress
 from data_processing import expand_source_ids, build_filtering_conditions, transform_dataframe, build_department_options, build_user_ids_by_departments
 from reports import add_indicator_columns, compute_report_1, compute_report_2, render_report_1, render_report_2
+from time_utils import get_vn_now, format_fetch_time
 
 # ==========================================
 # KHỞI TẠO CẤU HÌNH
@@ -97,7 +97,7 @@ with st.form("api_filter_form"):
             format_func=lambda x: x["dept_name"],
             help="Chọn một hoặc nhiều phòng ban. Để trống để tải tất cả."
         )
-        today = datetime.today().date()
+        today = get_vn_now().date()
         first_day_of_month = today.replace(day=1)
         date_range = st.date_input("Khoảng ngày tạo (Created_at)", [first_day_of_month, today])
 
@@ -175,7 +175,7 @@ if submitted and not is_currently_loading:
             df = transform_dataframe(df, src_ids, type_ids, account_types_list, users_list)
 
             st.session_state["raw_df"] = df
-            st.session_state["fetch_time"] = datetime.now().strftime("%Hh%M ngày %d/%m")
+            st.session_state["fetch_time"] = format_fetch_time()
             st.session_state["filtered_src_ids"] = src_ids
             st.session_state["filtered_type_ids"] = type_ids
             st.session_state["last_fetch_key"] = current_fetch_key

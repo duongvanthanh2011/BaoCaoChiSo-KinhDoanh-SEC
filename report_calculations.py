@@ -8,9 +8,9 @@ Chứa:
 
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 from report_utils import TRAO_DOI_LABELS, TIEM_NANG_LABELS, COC_CHOT_LABELS
 from data_processing import _classify_nguon
+from time_utils import format_fetch_time
 
 def add_indicator_columns(df_filtered):
     """
@@ -47,7 +47,7 @@ def compute_report_1(df_filtered):
         ]
         return pd.DataFrame(columns=cols)
 
-    fetch_time = st.session_state.get("fetch_time", datetime.now().strftime("%Hh%M ngày %d/%m"))
+    fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
 
     result = (
         df_filtered
@@ -120,7 +120,7 @@ def compute_report_2(df_filtered):
         ]
         return pd.DataFrame(columns=cols)
 
-    fetch_time = st.session_state.get("fetch_time", datetime.now().strftime("%Hh%M ngày %d/%m"))
+    fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
 
     df_work = df_filtered.copy()
     df_work['_classified_source'] = df_work['_nguon_kh_list'].apply(
@@ -181,46 +181,165 @@ def compute_excel_percentages(df_excel):
     return df_excel
 
 
-def prepare_excel_report_1(df_edited):
-    """Tính toán bảng hoàn chỉnh gồm phần trăm và dòng tổng cộng cho Report 1 (dùng cho download Excel)."""
+def prepare_excel_report_1(df_edited, dot_manual_df=None):
+    """Tính toán bảng hoàn chỉnh gồm phần trăm, dòng tổng đợt và dòng tổng cộng cho Report 1 (dùng cho download Excel)."""
     df_excel = df_edited.copy()
+    
+    # Xóa giá trị Cọc Khác và Tổng Cọc Học Thử ở cấp người phụ trách
+    # (giá trị này thuộc cấp đợt, sẽ hiển thị ở dòng tổng đợt)
+    df_excel['Cọc Khác'] = 0
+    df_excel['Tổng Cọc Học Thử'] = 0
+    
     df_excel = compute_excel_percentages(df_excel)
     
     if not df_excel.empty:
+        # Xây dựng bảng với dòng tổng theo từng đợt
+        result_parts = []
+        for dot_name in df_excel['ĐỢT HỌC THỬ'].unique():
+            group = df_excel[df_excel['ĐỢT HỌC THỬ'] == dot_name]
+            result_parts.append(group)
+            
+            # Lấy giá trị nhập tay cho đợt này
+            coc_khac = 0
+            tong_coc_ht = 0
+            if dot_manual_df is not None and not dot_manual_df.empty:
+                dot_row = dot_manual_df[dot_manual_df['ĐỢT HỌC THỬ'] == dot_name]
+                if not dot_row.empty:
+                    coc_khac = int(dot_row['Cọc Khác'].iloc[0])
+                    tong_coc_ht = int(dot_row['Tổng Cọc Học Thử'].iloc[0])
+            
+            # Tạo dòng tổng đợt
+            sub_data = group['Tổng số Data'].sum()
+            sub_sai_so = group['Sai Số - Sai Đối Tượng'].sum()
+            sub_base = sub_data - sub_sai_so
+            sub_tn_chua_goi = group['Tiềm Năng Chưa Gọi'].sum()
+            sub_trao_doi = group['Data Trao Đổi Được'].sum()
+            sub_tiem_nang = group['Data Tiềm Năng'].sum()
+            sub_coc_chot = group['Data Cọc Chốt'].sum()
+            
+            subtotal = {
+                'Thời gian xuất data': group['Thời gian xuất data'].iloc[0],
+                'ĐỢT HỌC THỬ': f'TỔNG {dot_name}',
+                'Phòng ban': '',
+                'Người phụ trách': '',
+                'Sai Số - Sai Đối Tượng': sub_sai_so,
+                'Tiềm Năng Chưa Gọi': sub_tn_chua_goi,
+                'Data Trao Đổi Được': sub_trao_doi,
+                'Data Tiềm Năng': sub_tiem_nang,
+                'Data Cọc Chốt': sub_coc_chot,
+                'Tổng số Data': sub_data,
+                'Tổng số data trừ sai số': sub_base,
+                'Cọc Khác': coc_khac,
+                'Tổng Cọc Học Thử': tong_coc_ht,
+                '% sai số-sai đối tượng/ Tổng data đã chia': (sub_sai_so / sub_data * 100) if sub_data else 0,
+                '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng': (sub_tn_chua_goi / sub_base * 100) if sub_base else 0,
+                '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng': (sub_trao_doi / sub_base * 100) if sub_base else 0,
+                '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng': (sub_tiem_nang / sub_base * 100) if sub_base else 0,
+                '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng': (sub_coc_chot / sub_base * 100) if sub_base else 0,
+                '% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng': (tong_coc_ht / sub_base * 100) if sub_base else 0,
+            }
+            result_parts.append(pd.DataFrame([subtotal]))
+        
+        df_excel = pd.concat(result_parts, ignore_index=True)
+        
+        # Dòng TỔNG CỘNG cuối cùng — chỉ tính từ dòng chi tiết (không tính dòng tổng đợt)
+        person_mask = ~df_excel['ĐỢT HỌC THỬ'].astype(str).str.startswith('TỔNG ')
+        person_rows = df_excel[person_mask]
+        
+        total_coc_khac = int(dot_manual_df['Cọc Khác'].sum()) if dot_manual_df is not None and not dot_manual_df.empty else 0
+        total_tong_coc = int(dot_manual_df['Tổng Cọc Học Thử'].sum()) if dot_manual_df is not None and not dot_manual_df.empty else 0
+        
+        tot_data = person_rows['Tổng số Data'].sum()
+        tot_sai_so = person_rows['Sai Số - Sai Đối Tượng'].sum()
+        tot_base = tot_data - tot_sai_so
+        tot_tn_chua_goi = person_rows['Tiềm Năng Chưa Gọi'].sum()
+        tot_trao_doi = person_rows['Data Trao Đổi Được'].sum()
+        tot_tiem_nang = person_rows['Data Tiềm Năng'].sum()
+        tot_coc_chot = person_rows['Data Cọc Chốt'].sum()
+        
         total_row = {
             'Thời gian xuất data': df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else '',
             'ĐỢT HỌC THỬ': 'TỔNG CỘNG',
             'Phòng ban': '',
             'Người phụ trách': '',
-            'Sai Số - Sai Đối Tượng': df_excel['Sai Số - Sai Đối Tượng'].sum(),
-            'Tiềm Năng Chưa Gọi': df_excel['Tiềm Năng Chưa Gọi'].sum(),
-            'Data Trao Đổi Được': df_excel['Data Trao Đổi Được'].sum(),
-            'Data Tiềm Năng': df_excel['Data Tiềm Năng'].sum(),
-            'Data Cọc Chốt': df_excel['Data Cọc Chốt'].sum(),
-            'Tổng số Data': df_excel['Tổng số Data'].sum(),
-            'Cọc Khác': df_excel['Cọc Khác'].sum(),
-            'Tổng Cọc Học Thử': df_excel['Tổng Cọc Học Thử'].sum(),
+            'Sai Số - Sai Đối Tượng': tot_sai_so,
+            'Tiềm Năng Chưa Gọi': tot_tn_chua_goi,
+            'Data Trao Đổi Được': tot_trao_doi,
+            'Data Tiềm Năng': tot_tiem_nang,
+            'Data Cọc Chốt': tot_coc_chot,
+            'Tổng số Data': tot_data,
+            'Tổng số data trừ sai số': tot_base,
+            'Cọc Khác': total_coc_khac,
+            'Tổng Cọc Học Thử': total_tong_coc,
+            '% sai số-sai đối tượng/ Tổng data đã chia': (tot_sai_so / tot_data * 100) if tot_data else 0,
+            '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng': (tot_tn_chua_goi / tot_base * 100) if tot_base else 0,
+            '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng': (tot_trao_doi / tot_base * 100) if tot_base else 0,
+            '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng': (tot_tiem_nang / tot_base * 100) if tot_base else 0,
+            '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng': (tot_coc_chot / tot_base * 100) if tot_base else 0,
+            '% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng': (total_tong_coc / tot_base * 100) if tot_base else 0,
         }
-
-        total_row['Tổng số data trừ sai số'] = total_row['Tổng số Data'] - total_row['Sai Số - Sai Đối Tượng']
-
-        tot_count = total_row['Tổng số Data']
-        base = total_row['Tổng số data trừ sai số']
-        total_row['% sai số-sai đối tượng/ Tổng data đã chia'] = (total_row['Sai Số - Sai Đối Tượng'] / tot_count * 100) if tot_count else 0
-        total_row['% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng'] = (total_row['Tiềm Năng Chưa Gọi'] / base * 100) if base else 0
-        total_row['% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng'] = (total_row['Data Trao Đổi Được'] / base * 100) if base else 0
-        total_row['% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng'] = (total_row['Data Tiềm Năng'] / base * 100) if base else 0
-        total_row['% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng'] = (total_row['Data Cọc Chốt'] / base * 100) if base else 0
-        total_row['% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng'] = (total_row.get('Tổng Cọc Học Thử', 0) / base * 100) if base else 0
-
+        
         df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
 
     return df_excel
 
 
-def prepare_excel_report_2(df_edited):
+def prepare_excel_report_2(df_edited, dot_manual_df=None):
     """Tính toán bảng hoàn chỉnh gồm phần trăm và dòng tổng cộng cho Report 2 (dùng cho download Excel)."""
     df_excel = df_edited.copy()
+
+    if dot_manual_df is not None and not dot_manual_df.empty:
+        # Data order thuộc cấp đợt, không thuộc từng nguồn chi tiết.
+        df_excel['Data order'] = 0
+        df_excel['50% data order'] = 0.0
+        df_excel['% data đã chia / 50% data order'] = 0.0
+        df_excel['% data đã chia / data order'] = 0.0
+
+        result_parts = []
+        for dot_name in df_excel['ĐỢT HỌC THỬ'].unique():
+            group = df_excel[df_excel['ĐỢT HỌC THỬ'] == dot_name]
+            result_parts.append(group)
+
+            data_order = 0
+            dot_row = dot_manual_df[dot_manual_df['ĐỢT HỌC THỬ'] == dot_name]
+            if not dot_row.empty:
+                data_order = int(dot_row['Data order'].iloc[0])
+
+            sub_data = int(group['Tổng số Data'].sum())
+            half_order = data_order * 0.5
+            subtotal = {
+                'Thời gian xuất data': group['Thời gian xuất data'].iloc[0],
+                'ĐỢT HỌC THỬ': f'TỔNG {dot_name}',
+                'Nguồn': '',
+                'Tổng số Data': sub_data,
+                'Data order': data_order,
+                '50% data order': half_order,
+                '% data đã chia / 50% data order': (sub_data / half_order * 100) if half_order else 0,
+                '% data đã chia / data order': (sub_data / data_order * 100) if data_order else 0,
+            }
+            result_parts.append(pd.DataFrame([subtotal]))
+
+        df_excel = pd.concat(result_parts, ignore_index=True)
+
+        detail_mask = ~df_excel['ĐỢT HỌC THỬ'].astype(str).str.startswith('TỔNG ')
+        detail_rows = df_excel[detail_mask]
+        total_data = int(detail_rows['Tổng số Data'].sum())
+        total_order = int(dot_manual_df['Data order'].sum())
+        half_total = total_order * 0.5
+
+        total_row = {
+            'Thời gian xuất data': df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else '',
+            'ĐỢT HỌC THỬ': 'TỔNG CỘNG',
+            'Nguồn': '',
+            'Tổng số Data': total_data,
+            'Data order': total_order,
+            '50% data order': half_total,
+            '% data đã chia / 50% data order': (total_data / half_total * 100) if half_total else 0,
+            '% data đã chia / data order': (total_data / total_order * 100) if total_order else 0,
+        }
+
+        df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
+        return df_excel
 
     # Tính % trên từng dòng
     data_order = df_excel['Data order'].replace(0, float('nan'))

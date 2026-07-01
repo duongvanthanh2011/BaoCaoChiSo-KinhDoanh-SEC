@@ -25,7 +25,7 @@ COC_CHOT_LABELS = ["ĐÃ CỌC", "ĐÃ CHỐT - TIỀM NĂNG UPSALE", "ĐÃ CH�
 pct_formatter = JsCode("""
 function(params) {
     if (params.value === undefined || params.value === null) {
-        return '0.00%';
+        return '';
     }
     return Number(params.value).toFixed(2) + '%';
 }
@@ -165,17 +165,29 @@ function(params) {
 getter_pct_tong_coc = JsCode("""
 function(params) {
     var val = 0, total = 0, saiSo = 0;
-    if (params.node && params.node.group) {
+    if (params.node && params.node.rowPinned) {
+        val = params.data ? (params.data['Tổng Cọc Học Thử'] || 0) : 0;
+        total = params.data ? (params.data['Tổng số Data'] || 0) : 0;
+        saiSo = params.data ? (params.data['Sai Số - Sai Đối Tượng'] || 0) : 0;
+    } else if (params.node && (params.node.group || params.node.footer) && params.node.level === 0) {
         val = params.node.aggData ? (params.node.aggData['Tổng Cọc Học Thử'] || 0) : 0;
         total = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
         saiSo = params.node.aggData ? (params.node.aggData['Sai Số - Sai Đối Tượng'] || 0) : 0;
     } else {
-        val = params.data ? (params.data['Tổng Cọc Học Thử'] || 0) : 0;
-        total = params.data ? (params.data['Tổng số Data'] || 0) : 0;
-        saiSo = params.data ? (params.data['Sai Số - Sai Đối Tượng'] || 0) : 0;
+        return null;
     }
     var base = total - saiSo;
     return base > 0 ? (val / base * 100) : 0;
+}
+""")
+
+style_pct_tong_coc = JsCode("""
+function(params){
+    var val = params.value;
+    if (val === undefined || val === null) return {};
+    if (val >= 10) return {'backgroundColor':'#ccffcc'};
+    if (val >= 7) return {'backgroundColor':'#fff2cc'};
+    return {'backgroundColor':'#ffcccc'};
 }
 """)
 
@@ -186,12 +198,14 @@ function(params) {
 getter_pct_r2_half = JsCode("""
 function(params) {
     var totalData = 0, dataOrder = 0;
-    if (params.node && params.node.group) {
+    if (params.node && params.node.rowPinned) {
+        totalData = params.data ? (params.data['Tổng số Data'] || 0) : 0;
+        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
+    } else if (params.node && (params.node.group || params.node.footer) && params.node.level === 0) {
         totalData = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
         dataOrder = params.node.aggData ? (params.node.aggData['Data order'] || 0) : 0;
     } else {
-        totalData = params.data ? (params.data['Tổng số Data'] || 0) : 0;
-        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
+        return null;
     }
     var halfOrder = dataOrder * 0.5;
     return halfOrder > 0 ? (totalData / halfOrder * 100) : 0;
@@ -201,10 +215,12 @@ function(params) {
 getter_half_order = JsCode("""
 function(params) {
     var dataOrder = 0;
-    if (params.node && params.node.group) {
+    if (params.node && params.node.rowPinned) {
+        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
+    } else if (params.node && (params.node.group || params.node.footer) && params.node.level === 0) {
         dataOrder = params.node.aggData ? (params.node.aggData['Data order'] || 0) : 0;
     } else {
-        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
+        return null;
     }
     return dataOrder * 0.5;
 }
@@ -213,14 +229,26 @@ function(params) {
 getter_pct_r2_full = JsCode("""
 function(params) {
     var totalData = 0, dataOrder = 0;
-    if (params.node && params.node.group) {
+    if (params.node && params.node.rowPinned) {
+        totalData = params.data ? (params.data['Tổng số Data'] || 0) : 0;
+        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
+    } else if (params.node && (params.node.group || params.node.footer) && params.node.level === 0) {
         totalData = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
         dataOrder = params.node.aggData ? (params.node.aggData['Data order'] || 0) : 0;
     } else {
-        totalData = params.data ? (params.data['Tổng số Data'] || 0) : 0;
-        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
+        return null;
     }
     return dataOrder > 0 ? (totalData / dataOrder * 100) : 0;
+}
+""")
+
+formatter_r2_dot_manual_value = JsCode("""
+function(params) {
+    if (params.node && (params.node.rowPinned || params.node.group || params.node.footer)) {
+        if (params.value === undefined || params.value === null) return '';
+        return params.value;
+    }
+    return '';
 }
 """)
 
@@ -305,14 +333,14 @@ def configure_standard_grid_columns(gb, count_cols):
     # Cấu hình tự động xuống dòng cho header
     gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
 
-    # Cọc Khác, Tổng Cọc Học Thử có thể nhập tay
-    gb.configure_column("Cọc Khác", editable=True, width=100)
-    gb.configure_column("Tổng Cọc Học Thử", editable=True, width=120)
+    # Cọc Khác, Tổng Cọc Học Thử — ẩn khỏi grid, nhập tay ở bảng riêng theo đợt
+    gb.configure_column("Cọc Khác", hide=True, aggFunc="sum", width=100)
+    gb.configure_column("Tổng Cọc Học Thử", hide=True, aggFunc="sum", width=120)
 
     # Thiết lập hàm tính tổng (sum) cho các cột đếm
     for c in count_cols:
         # Nếu cột đếm là cột cần gộp với phần trăm, ta sẽ định nghĩa cụ thể bên dưới
-        if c not in ["Sai Số - Sai Đối Tượng", "Tiềm Năng Chưa Gọi", "Data Trao Đổi Được", "Data Tiềm Năng", "Data Cọc Chốt"]:
+        if c not in ["Sai Số - Sai Đối Tượng", "Tiềm Năng Chưa Gọi", "Data Trao Đổi Được", "Data Tiềm Năng", "Data Cọc Chốt", "Cọc Khác", "Tổng Cọc Học Thử"]:
             gb.configure_column(c, aggFunc="sum", width=100 if len(c) < 15 else 115)
 
     # Cấu hình đặc biệt cho các cột số lượng gộp phần trăm
@@ -364,11 +392,12 @@ def configure_standard_grid_columns(gb, count_cols):
     gb.configure_column("% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
     gb.configure_column("% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
 
-    # Hiển thị cột % Tổng cọc buổi học thử
+    # Hiển thị cột % Tổng cọc buổi học thử (có tô màu KPI)
     gb.configure_column(
         "% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng",
         valueGetter=getter_pct_tong_coc,
         valueFormatter=pct_formatter,
+        cellStyle=style_pct_tong_coc,
         width=160
     )
 
@@ -384,7 +413,13 @@ def configure_report2_grid_columns(gb, count_cols):
     for c in count_cols:
         gb.configure_column(c, aggFunc="sum", width=110)
 
-    gb.configure_column("Data order", editable=True, aggFunc="sum", width=110)
+    gb.configure_column(
+        "Data order",
+        editable=False,
+        aggFunc="sum",
+        valueFormatter=formatter_r2_dot_manual_value,
+        width=110
+    )
 
     gb.configure_column(
         "50% data order",
