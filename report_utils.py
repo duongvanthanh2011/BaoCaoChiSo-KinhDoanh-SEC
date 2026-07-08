@@ -13,9 +13,38 @@ from st_aggrid.shared import JsCode
 # ==========================================
 # NHÃN PHÂN LOẠI MỐI QUAN HỆ
 # ==========================================
-TRAO_DOI_LABELS = ["ĐANG TRAO ĐỔI", "HỌC VIÊN TIỀM NĂNG", "ĐÃ CỌC", "ĐÃ CHỐT - TIỀM NĂNG UPSALE", "ĐÃ CHỐT FULL"]
-TIEM_NANG_LABELS = ["HỌC VIÊN TIỀM NĂNG", "ĐÃ CỌC", "ĐÃ CHỐT - TIỀM NĂNG UPSALE", "ĐÃ CHỐT FULL"]
-COC_CHOT_LABELS = ["ĐÃ CỌC", "ĐÃ CHỐT - TIỀM NĂNG UPSALE", "ĐÃ CHỐT FULL"]
+TRAO_DOI_LABELS = [
+    "ĐANG TRAO ĐỔI",
+    "HỌC VIÊN TIỀM NĂNG",
+    "ĐÃ CỌC",
+    "ĐÃ CHỐT - TIỀM NĂNG UPSALE",
+    "ĐÃ CHỐT FULL",
+]
+
+TIEM_NANG_LABELS = [
+    "HỌC VIÊN TIỀM NĂNG",
+    "ĐÃ CỌC",
+    "ĐÃ CHỐT - TIỀM NĂNG UPSALE",
+    "ĐÃ CHỐT FULL",
+]
+
+COC_CHOT_LABELS = [
+    "ĐÃ CỌC",
+    "ĐÃ CHỐT - TIỀM NĂNG UPSALE",
+    "ĐÃ CHỐT FULL",
+]
+
+SAI_SO_SAI_DOI_TUONG_LABELS = [
+    "SAI SỐ",
+    "SAI ĐỐI TƯỢNG.",
+    "SAI SỐ - SAI ĐỐI TƯỢNG",
+]
+
+TIEM_NANG_CHUA_GOI_LABELS = [
+    "TIỀM NĂNG CHƯA GỌI CVHT",
+    "DATA MỚI CHƯA GỌI CVHT",
+    "DATA CHƯA GỌI CVHT BACK LẠI",
+]
 
 # ==========================================
 # CẤU HÌNH PHẦN TRĂM & TÔ MÀU KPI CHO AGGRID

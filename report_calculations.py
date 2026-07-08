@@ -8,7 +8,13 @@ Chứa:
 
 import streamlit as st
 import pandas as pd
-from report_utils import TRAO_DOI_LABELS, TIEM_NANG_LABELS, COC_CHOT_LABELS
+from report_utils import (
+    COC_CHOT_LABELS,
+    SAI_SO_SAI_DOI_TUONG_LABELS,
+    TIEM_NANG_CHUA_GOI_LABELS,
+    TIEM_NANG_LABELS,
+    TRAO_DOI_LABELS,
+)
 from data_processing import _classify_nguon
 from time_utils import format_fetch_time
 
@@ -17,13 +23,17 @@ def add_indicator_columns(df_filtered):
     Tạo các cột chỉ báo (0/1) trên dữ liệu đã lọc.
     Cần gọi trước khi tính báo cáo.
     """
-    df_filtered["Data_trao_doi_duoc"] = df_filtered["Mối quan hệ"].isin(TRAO_DOI_LABELS).astype(int)
-    df_filtered["Data_tiem_nang"]     = df_filtered["Mối quan hệ"].isin(TIEM_NANG_LABELS).astype(int)
-    df_filtered["Data_coc_chot"]      = df_filtered["Mối quan hệ"].isin(COC_CHOT_LABELS).astype(int)
-    
-    # Các chỉ báo mới theo yêu cầu của người dùng
-    df_filtered["SAI SỐ - SAI ĐỐI TƯỢNG"] = df_filtered["Mối quan hệ"].isin(["SAI SỐ", "SAI ĐỐI TƯỢNG.", "SAI SỐ - SAI ĐỐI TƯỢNG"]).astype(int)
-    df_filtered["TIỀM NĂNG CHƯA GỌI"]     = df_filtered["Mối quan hệ"].isin(["TIỀM NĂNG CHƯA GỌI CVHT", "DATA CHƯA GỌI CVHT"]).astype(int)
+    indicator_label_map = {
+        "Data_trao_doi_duoc": TRAO_DOI_LABELS,
+        "Data_tiem_nang": TIEM_NANG_LABELS,
+        "Data_coc_chot": COC_CHOT_LABELS,
+        "SAI SỐ - SAI ĐỐI TƯỢNG": SAI_SO_SAI_DOI_TUONG_LABELS,
+        "TIỀM NĂNG CHƯA GỌI": TIEM_NANG_CHUA_GOI_LABELS,
+    }
+
+    relation_series = df_filtered["Mối quan hệ"]
+    for column_name, labels in indicator_label_map.items():
+        df_filtered[column_name] = relation_series.isin(labels).astype(int)
     
     return df_filtered
 
