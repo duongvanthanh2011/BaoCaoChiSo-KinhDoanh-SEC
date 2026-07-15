@@ -65,7 +65,9 @@ style_pct_saiso = JsCode("""
 function(params){
     var val = params.value;
     if (val === undefined || val === null) return {};
-    return val > 5 ? {'backgroundColor':'#ffcccc'} : {'backgroundColor':'#ccffcc'};
+    if (val > 7) return {'backgroundColor':'#ffcccc'};
+    if (val >= 3) return {'backgroundColor':'#fff2cc'};
+    return {'backgroundColor':'#ccffcc'};
 }
 """)
 
@@ -325,7 +327,9 @@ function(params) {
     var pct = base ? (val / base * 100) : 0;
     
     if (field === 'Sai Số - Sai Đối Tượng') {
-        return pct > 5 ? {'backgroundColor':'#ffcccc'} : {'backgroundColor':'#ccffcc'};
+        if (pct > 7) return {'backgroundColor':'#ffcccc'};
+        if (pct >= 3) return {'backgroundColor':'#fff2cc'};
+        return {'backgroundColor':'#ccffcc'};
     }
     if (field === 'Tiềm Năng Chưa Gọi') {
         return pct > 0 ? {'backgroundColor':'#ffcccc'} : {'backgroundColor':'#ccffcc'};
