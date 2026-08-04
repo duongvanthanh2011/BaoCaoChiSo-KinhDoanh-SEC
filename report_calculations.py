@@ -377,3 +377,83 @@ def prepare_excel_report_2(df_edited, dot_manual_df=None):
         df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
 
     return df_excel
+
+
+# ==========================================
+# BÁO CÁO 3: THỐNG KÊ THEO NGUỒN & ĐỘ TUỔI
+# ==========================================
+
+def compute_report_3(df_filtered):
+    """
+    Tính toán Báo cáo 3: Ma trận Nguồn × Độ tuổi với trọng số và tỷ lệ phần trăm.
+    
+    Returns:
+        pd.DataFrame: Pivot table với các cột:
+        - Nguồn
+        - Các nhóm tuổi (8 cột)
+        - TỔNG
+        - Các cột % cho từng nhóm tuổi
+        - Nhóm tổng hợp: HS cấp 2+3, SV + DL <45, Khác (HS1+45-60+60+Chưa điền)
+    """
+    if df_filtered.empty:
+        return pd.DataFrame()
+    
+    # Expand weighted sources
+    rows = []
+    for _, row in df_filtered.iterrows():
+        sources_weights = row.get("_sources_with_weights", [("Khác", 1.0)])
+        age_group = row.get("Nhóm tuổi", "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG")
+        
+        for source_classified, weight in sources_weights:
+            rows.append({
+                "Nguồn": source_classified,
+                "Nhóm tuổi": age_group,
+                "Weight": weight
+            })
+    
+    expanded_df = pd.DataFrame(rows)
+    
+    # Pivot table: sum weights by (Nguồn, Nhóm tuổi)
+    pivot = expanded_df.groupby(["Nguồn", "Nhóm tuổi"])["Weight"].sum().unstack(fill_value=0)
+    
+    # Thêm dòng TỔNG CỘNG
+    total_row = pivot.sum()
+    total_row.name = "TỔNG CỘNG"
+    pivot = pd.concat([pivot, total_row.to_frame().T])
+    
+    # Add TỔNG column
+    pivot["TỔNG"] = pivot.sum(axis=1)
+    
+    # Calculate percentages
+    for col in pivot.columns:
+        if col != "TỔNG":
+            pivot[f"{col} (%)"] = (pivot[col] / pivot["TỔNG"] * 100).round(2)
+    
+    # Consolidated groups
+    # HS cấp 2 + HS cấp 3
+    pivot["HS cấp 2+3"] = pivot.get("Học sinh cấp 2", 0) + pivot.get("Học sinh cấp 3", 0)
+    pivot["HS cấp 2+3 (%)"] = (pivot["HS cấp 2+3"] / pivot["TỔNG"] * 100).round(2)
+    
+    # SV + Người đi làm dưới 45
+    pivot["SV + DL <45"] = pivot.get("Sinh viên", 0) + pivot.get("Người đi làm dưới 45 tuổi", 0)
+    pivot["SV + DL <45 (%)"] = (pivot["SV + DL <45"] / pivot["TỔNG"] * 100).round(2)
+    
+    # Khác: HS1 + 45-60 + 60+ + Chưa điền
+    pivot["Khác (HS1+45-60+60+Chưa điền)"] = (
+        pivot.get("Học sinh cấp 1", 0) +
+        pivot.get("Người đi làm từ 45 đến dưới 60 tuổi", 0) +
+        pivot.get("Người trên 60 tuổi", 0) +
+        pivot.get("SALE CHƯA ĐIỀN & ĐIỀN TRÙNG", 0)
+    )
+    pivot["Khác (HS1+45-60+60+Chưa điền) (%)"] = (
+        pivot["Khác (HS1+45-60+60+Chưa điền)"] / pivot["TỔNG"] * 100
+    ).round(2)
+    
+    # Reset index to make "Nguồn" a regular column
+    result_df = pivot.reset_index()
+    
+    # Round all numeric columns to 2 decimals
+    numeric_cols = result_df.select_dtypes(include=['number']).columns
+    result_df[numeric_cols] = result_df[numeric_cols].round(2)
+    
+    return result_df

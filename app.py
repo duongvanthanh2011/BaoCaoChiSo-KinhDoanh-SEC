@@ -13,7 +13,7 @@ import json
 from config import get_api_key, get_url_base, get_headers
 from api_client import get_account_types, get_account_sources, get_users, fetch_accounts_with_progress
 from data_processing import expand_source_ids, build_filtering_conditions, transform_dataframe, build_department_options, build_user_ids_by_departments
-from reports import add_indicator_columns, compute_report_1, compute_report_2, render_report_1, render_report_2
+from reports import add_indicator_columns, compute_report_1, compute_report_2, compute_report_3, render_report_1, render_report_2, render_report_3
 from time_utils import get_vn_now, format_fetch_time
 
 # ==========================================
@@ -219,17 +219,26 @@ if st.session_state["raw_df"] is not None:
         # Thêm các cột chỉ báo
         df_filtered = add_indicator_columns(df_filtered)
 
-        # Tính toán 2 báo cáo
+        # Tính toán 3 báo cáo
         result = compute_report_1(df_filtered)
         result_2 = compute_report_2(df_filtered)
+        result_3 = compute_report_3(df_filtered)
 
     st.success("Tạo báo cáo thành công!")
 
-    # Hiển thị báo cáo trong 2 tab
-    tab1, tab2 = st.tabs(["📋 Báo cáo 1: Theo Đợt học thử & Người phụ trách", "🌐 Báo cáo 2: Theo Nguồn khách hàng & Nhóm"])
+    # Hiển thị báo cáo trong 3 tab
+    tab1, tab2, tab3 = st.tabs([
+        "📋 Báo cáo 1: Theo Đợt học thử & Người phụ trách",
+        "🌐 Báo cáo 2: Theo Nguồn khách hàng & Nhóm",
+        "👥 Báo cáo 3: Thống kê theo Nguồn & Độ Tuổi"
+    ])
 
     with tab1:
         render_report_1(result)
 
     with tab2:
         render_report_2(result_2)
+
+    with tab3:
+        render_report_3(result_3)
+

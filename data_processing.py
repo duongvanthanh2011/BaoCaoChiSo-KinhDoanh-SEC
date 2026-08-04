@@ -246,6 +246,95 @@ def _classify_nguon(label):
     return "KHÁC"
 
 
+# ==========================================
+# PHÂN LOẠI NHÓM TUỔI TỪ TRƯỜNG DESCRIPTION
+# ==========================================
+
+AGE_GROUPS = [
+    "Học sinh cấp 1",
+    "Học sinh cấp 2",
+    "Học sinh cấp 3",
+    "Sinh viên",
+    "Người đi làm dưới 45 tuổi",
+    "Người đi làm từ 45 đến dưới 60 tuổi",
+    "Người trên 60 tuổi",
+    "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
+]
+
+def classify_age_group(description):
+    """
+    Phân loại nhóm tuổi từ trường description.
+    Nếu rỗng hoặc không khớp 7 nhóm đầu → SALE CHƯA ĐIỀN & ĐIỀN TRÙNG
+    """
+    if not description or not isinstance(description, str) or not description.strip():
+        return "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
+    desc = description.strip()
+    if desc in AGE_GROUPS[:-1]:
+        return desc
+    return "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
+
+# ==========================================
+# PHÂN LOẠI NGUỒN VỚI PRIORITY RULES
+# ==========================================
+
+def classify_source_with_priority(label):
+    """
+    Phân loại nguồn theo priority:
+    1. Google Ads (chứa GG)
+    2. Khác (chứa staff hoặc org)
+    3. Ads Trường Chinh
+    4. Ads Cầu Giấy
+    """
+    if not isinstance(label, str):
+        return "Khác"
+    
+    label_lower = label.lower()
+    
+    # Priority 1: Google Ads (chứa GG, GG1, GG2, ...)
+    if "gg" in label_lower:
+        return "Google Ads"
+    
+    # Priority 2: Khác (chứa staff hoặc org)
+    if "staff" in label_lower or "org" in label_lower:
+        return "Khác"
+    
+    # Priority 3: Ads Trường Chinh
+    if "trường chinh" in label_lower or "truong chinh" in label_lower:
+        return "Ads Trường Chinh"
+    
+    # Priority 4: Ads Cầu Giấy
+    if "cầu giấy" in label_lower or "cau giay" in label_lower:
+        return "Ads Cầu Giấy"
+    
+    return "Khác"
+
+# ==========================================
+# PHÂN BỔ TRỌNG SỐ CHO CÁC NGUỒN
+# ==========================================
+
+def expand_sources_with_weights(account_source_details):
+    """
+    Mở rộng danh sách nguồn với trọng số.
+    Mỗi khách hàng có N nguồn → mỗi nguồn được 1/N trọng số.
+    
+    Returns:
+        List of tuples: [(source_classified, weight), ...]
+    """
+    if not isinstance(account_source_details, list) or len(account_source_details) == 0:
+        return [("Khác", 1.0)]
+    
+    n = len(account_source_details)
+    weight = 1.0 / n
+    result = []
+    
+    for source_item in account_source_details:
+        label = source_item.get("label", "")
+        classified = classify_source_with_priority(label)
+        result.append((classified, weight))
+    
+    return result
+
+
 def transform_dataframe(df, src_ids, type_ids, account_types_list, users_list=None):
     """
     Biến đổi DataFrame thô từ API thành DataFrame sạch cho báo cáo.
@@ -315,5 +404,17 @@ def transform_dataframe(df, src_ids, type_ids, account_types_list, users_list=No
     # 5. Đảm bảo không có giá trị NaN làm gãy thuật toán
     df["Mối quan hệ"] = df["Mối quan hệ"].fillna("CHƯA XÁC ĐỊNH")
     df["Người phụ trách"] = df["Người phụ trách"].fillna("Chưa phân bổ")
+
+    # 6. Thêm cột phân loại nhóm tuổi từ description
+    if "description" in df.columns:
+        df["Nhóm tuổi"] = df["description"].apply(classify_age_group)
+    else:
+        # Fallback nếu API không trả về description
+        df["Nhóm tuổi"] = "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
+    
+    # 7. Thêm cột nguồn với trọng số
+    df["_sources_with_weights"] = df.get("account_source_details", pd.Series(dtype=object)).apply(
+        expand_sources_with_weights
+    )
 
     return df

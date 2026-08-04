@@ -23,6 +23,7 @@ from report_calculations import (
     add_indicator_columns, 
     compute_report_1, 
     compute_report_2,
+    compute_report_3,
     prepare_excel_report_1,
     prepare_excel_report_2
 )
@@ -32,8 +33,10 @@ __all__ = [
     'add_indicator_columns',
     'compute_report_1',
     'compute_report_2',
+    'compute_report_3',
     'render_report_1',
-    'render_report_2'
+    'render_report_2',
+    'render_report_3'
 ]
 
 
@@ -227,5 +230,32 @@ def render_report_2(result_2):
         label="📥 Tải xuống Báo cáo 2 (Excel)",
         data=buffer.getvalue(),
         file_name="Bao_cao_Nguon_Khach_Hang.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+def render_report_3(result_3):
+    """Hiển thị Báo cáo 3: Ma trận Nguồn × Độ tuổi."""
+    st.subheader("Bản xem trước: Báo cáo theo Nguồn khách hàng & Nhóm tuổi")
+    
+    if result_3.empty:
+        st.warning("⚠️ Không có dữ liệu để hiển thị.")
+        return
+    
+    # Hiển thị DataFrame thông thường (không cần AgGrid phức tạp)
+    st.dataframe(
+        result_3,
+        width='stretch',
+        hide_index=False
+    )
+    
+    # Tải xuống Excel
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        result_3.to_excel(writer, sheet_name='BC_Nguon_Tuoi', index=False)
+    
+    st.download_button(
+        label="📥 Tải xuống Báo cáo 3 (Excel)",
+        data=buffer.getvalue(),
+        file_name="Bao_cao_Nguon_Tuoi.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
