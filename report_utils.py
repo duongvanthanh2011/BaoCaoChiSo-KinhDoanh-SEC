@@ -46,6 +46,12 @@ TIEM_NANG_CHUA_GOI_LABELS = [
     "DATA CHƯA GỌI CVHT BACK LẠI",
 ]
 
+CHUA_TRAO_DOI_AUTO_CALL_LABELS = [
+    "CHƯA TRAO ĐỔI ĐƯỢCC",
+    "CHƯA TRAO ĐỔI ĐƯỢC",
+    "AUTO CALL",
+]
+
 # ==========================================
 # CẤU HÌNH PHẦN TRĂM & TÔ MÀU KPI CHO AGGRID
 # ==========================================
@@ -76,6 +82,16 @@ function(params){
     var val = params.value;
     if (val === undefined || val === null) return {};
     return val > 0 ? {'backgroundColor':'#ffcccc'} : {'backgroundColor':'#ccffcc'};
+}
+""")
+
+style_pct_chua_trao_doi_autocall = JsCode("""
+function(params){
+    var val = params.value;
+    if (val === undefined || val === null) return {};
+    if (val >= 30) return {'backgroundColor':'#ffcccc'};
+    if (val >= 20) return {'backgroundColor':'#fff2cc'};
+    return {'backgroundColor':'#ccffcc'};
 }
 """)
 
@@ -134,6 +150,23 @@ function(params) {
         saiSo = params.node.aggData ? (params.node.aggData['Sai Số - Sai Đối Tượng'] || 0) : 0;
     } else {
         val = params.data ? (params.data['Tiềm Năng Chưa Gọi'] || 0) : 0;
+        total = params.data ? (params.data['Tổng số Data'] || 0) : 0;
+        saiSo = params.data ? (params.data['Sai Số - Sai Đối Tượng'] || 0) : 0;
+    }
+    var base = total - saiSo;
+    return base > 0 ? (val / base * 100) : 0;
+}
+""")
+
+getter_pct_chua_trao_doi_autocall = JsCode("""
+function(params) {
+    var val = 0, total = 0, saiSo = 0;
+    if (params.node && params.node.group) {
+        val = params.node.aggData ? (params.node.aggData['Data Chưa Trao Đổi + Auto Call'] || 0) : 0;
+        total = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
+        saiSo = params.node.aggData ? (params.node.aggData['Sai Số - Sai Đối Tượng'] || 0) : 0;
+    } else {
+        val = params.data ? (params.data['Data Chưa Trao Đổi + Auto Call'] || 0) : 0;
         total = params.data ? (params.data['Tổng số Data'] || 0) : 0;
         saiSo = params.data ? (params.data['Sai Số - Sai Đối Tượng'] || 0) : 0;
     }
@@ -334,6 +367,11 @@ function(params) {
     if (field === 'Tiềm Năng Chưa Gọi') {
         return pct > 0 ? {'backgroundColor':'#ffcccc'} : {'backgroundColor':'#ccffcc'};
     }
+    if (field === 'Data Chưa Trao Đổi + Auto Call') {
+        if (pct >= 30) return {'backgroundColor':'#ffcccc'};
+        if (pct >= 20) return {'backgroundColor':'#fff2cc'};
+        return {'backgroundColor':'#ccffcc'};
+    }
     if (field === 'Data Trao Đổi Được') {
         if (pct >= 60) return {'backgroundColor':'#ccffcc'};
         if (pct >= 50) return {'backgroundColor':'#fff2cc'};
@@ -373,7 +411,7 @@ def configure_standard_grid_columns(gb, count_cols):
     # Thiết lập hàm tính tổng (sum) cho các cột đếm
     for c in count_cols:
         # Nếu cột đếm là cột cần gộp với phần trăm, ta sẽ định nghĩa cụ thể bên dưới
-        if c not in ["Sai Số - Sai Đối Tượng", "Tiềm Năng Chưa Gọi", "Data Trao Đổi Được", "Data Tiềm Năng", "Data Cọc Chốt", "Cọc Khác", "Tổng Cọc Học Thử"]:
+        if c not in ["Sai Số - Sai Đối Tượng", "Tiềm Năng Chưa Gọi", "Data Chưa Trao Đổi + Auto Call", "Data Trao Đổi Được", "Data Tiềm Năng", "Data Cọc Chốt", "Cọc Khác", "Tổng Cọc Học Thử"]:
             gb.configure_column(c, aggFunc="sum", width=100 if len(c) < 15 else 115)
 
     # Cấu hình đặc biệt cho các cột số lượng gộp phần trăm
@@ -388,6 +426,14 @@ def configure_standard_grid_columns(gb, count_cols):
     gb.configure_column(
         "Tiềm Năng Chưa Gọi",
         headerName="% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng",
+        aggFunc="sum",
+        valueFormatter=formatter_merged,
+        cellStyle=style_merged,
+        width=120
+    )
+    gb.configure_column(
+        "Data Chưa Trao Đổi + Auto Call",
+        headerName="% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng",
         aggFunc="sum",
         valueFormatter=formatter_merged,
         cellStyle=style_merged,
@@ -421,6 +467,7 @@ def configure_standard_grid_columns(gb, count_cols):
     # Ẩn các cột phần trăm cũ trên UI của AgGrid
     gb.configure_column("% sai số-sai đối tượng/ Tổng data đã chia", hide=True)
     gb.configure_column("% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
+    gb.configure_column("% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
     gb.configure_column("% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
     gb.configure_column("% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
     gb.configure_column("% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)

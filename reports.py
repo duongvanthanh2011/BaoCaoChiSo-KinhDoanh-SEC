@@ -86,7 +86,7 @@ def render_report_1(result):
     
     # Cấu hình các cột số lượng và tỉ lệ KPI (tái sử dụng từ report_utils)
     count_cols = [
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 'Data Chưa Trao Đổi + Auto Call',
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
         'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử'
     ]
@@ -109,6 +109,7 @@ def render_report_1(result):
             'Người phụ trách': '📊 TỔNG DATA XUẤT RA',
             'Sai Số - Sai Đối Tượng': total_sai_so,
             'Tiềm Năng Chưa Gọi': int(df_to_show['Tiềm Năng Chưa Gọi'].sum()),
+            'Data Chưa Trao Đổi + Auto Call': int(df_to_show['Data Chưa Trao Đổi + Auto Call'].sum()),
             'Data Trao Đổi Được': int(df_to_show['Data Trao Đổi Được'].sum()),
             'Data Tiềm Năng': int(df_to_show['Data Tiềm Năng'].sum()),
             'Data Cọc Chốt': int(df_to_show['Data Cọc Chốt'].sum()),

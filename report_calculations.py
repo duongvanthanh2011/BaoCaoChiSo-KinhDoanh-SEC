@@ -14,6 +14,7 @@ from report_utils import (
     TIEM_NANG_CHUA_GOI_LABELS,
     TIEM_NANG_LABELS,
     TRAO_DOI_LABELS,
+    CHUA_TRAO_DOI_AUTO_CALL_LABELS,
 )
 from data_processing import _classify_nguon
 from time_utils import format_fetch_time
@@ -29,6 +30,7 @@ def add_indicator_columns(df_filtered):
         "Data_coc_chot": COC_CHOT_LABELS,
         "SAI SỐ - SAI ĐỐI TƯỢNG": SAI_SO_SAI_DOI_TUONG_LABELS,
         "TIỀM NĂNG CHƯA GỌI": TIEM_NANG_CHUA_GOI_LABELS,
+        "Data_chua_trao_doi_autocall": CHUA_TRAO_DOI_AUTO_CALL_LABELS,
     }
 
     relation_series = df_filtered["Mối quan hệ"]
@@ -45,11 +47,12 @@ def compute_report_1(df_filtered):
     if df_filtered.empty:
         cols = [
             'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách',
-            'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
+            'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 'Data Chưa Trao Đổi + Auto Call',
             'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
             'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử',
             '% sai số-sai đối tượng/ Tổng data đã chia', 
             '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng', 
+            '% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng',
             '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng', 
             '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng', 
             '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng',
@@ -65,6 +68,7 @@ def compute_report_1(df_filtered):
         .agg(
             sai_so_sai_doi_tuong=("SAI SỐ - SAI ĐỐI TƯỢNG", "sum"),
             tiem_nang_chua_goi=("TIỀM NĂNG CHƯA GỌI", "sum"),
+            Data_chua_trao_doi_autocall=("Data_chua_trao_doi_autocall", "sum"),
             Data_trao_doi_duoc=("Data_trao_doi_duoc", "sum"),
             Data_tiem_nang=("Data_tiem_nang", "sum"),
             Data_coc_chot=("Data_coc_chot", "sum"),
@@ -76,6 +80,7 @@ def compute_report_1(df_filtered):
     result.rename(columns={
         "sai_so_sai_doi_tuong": "Sai Số - Sai Đối Tượng",
         "tiem_nang_chua_goi": "Tiềm Năng Chưa Gọi",
+        "Data_chua_trao_doi_autocall": "Data Chưa Trao Đổi + Auto Call",
         "Data_trao_doi_duoc": "Data Trao Đổi Được",
         "Data_tiem_nang": "Data Tiềm Năng",
         "Data_coc_chot": "Data Cọc Chốt",
@@ -89,6 +94,7 @@ def compute_report_1(df_filtered):
 
     result['% sai số-sai đối tượng/ Tổng data đã chia'] = 0.0
     result['% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
+    result['% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
     result['% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
     result['% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
     result['% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
@@ -96,11 +102,12 @@ def compute_report_1(df_filtered):
 
     cols_order = [
         'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách',
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 'Data Chưa Trao Đổi + Auto Call',
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
         'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử',
         '% sai số-sai đối tượng/ Tổng data đã chia', 
         '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng', 
+        '% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng',
         '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng', 
         '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng', 
         '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng',
@@ -109,7 +116,7 @@ def compute_report_1(df_filtered):
     result = result[cols_order]
 
     int_cols = [
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi',
+        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 'Data Chưa Trao Đổi + Auto Call',
         'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
         'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử'
     ]
@@ -182,6 +189,7 @@ def compute_excel_percentages(df_excel):
     base = df_excel['Tổng số data trừ sai số']
     df_excel['% sai số-sai đối tượng/ Tổng data đã chia'] = (df_excel['Sai Số - Sai Đối Tượng'] / tot * 100).fillna(0)
     df_excel['% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Tiềm Năng Chưa Gọi'] / base * 100).fillna(0)
+    df_excel['% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Data Chưa Trao Đổi + Auto Call'] / base * 100).fillna(0)
     df_excel['% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Data Trao Đổi Được'] / base * 100).fillna(0)
     df_excel['% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Data Tiềm Năng'] / base * 100).fillna(0)
     df_excel['% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Data Cọc Chốt'] / base * 100).fillna(0)
@@ -223,6 +231,7 @@ def prepare_excel_report_1(df_edited, dot_manual_df=None):
             sub_sai_so = group['Sai Số - Sai Đối Tượng'].sum()
             sub_base = sub_data - sub_sai_so
             sub_tn_chua_goi = group['Tiềm Năng Chưa Gọi'].sum()
+            sub_chua_trao_doi_autocall = group['Data Chưa Trao Đổi + Auto Call'].sum()
             sub_trao_doi = group['Data Trao Đổi Được'].sum()
             sub_tiem_nang = group['Data Tiềm Năng'].sum()
             sub_coc_chot = group['Data Cọc Chốt'].sum()
@@ -234,6 +243,7 @@ def prepare_excel_report_1(df_edited, dot_manual_df=None):
                 'Người phụ trách': '',
                 'Sai Số - Sai Đối Tượng': sub_sai_so,
                 'Tiềm Năng Chưa Gọi': sub_tn_chua_goi,
+                'Data Chưa Trao Đổi + Auto Call': sub_chua_trao_doi_autocall,
                 'Data Trao Đổi Được': sub_trao_doi,
                 'Data Tiềm Năng': sub_tiem_nang,
                 'Data Cọc Chốt': sub_coc_chot,
@@ -243,6 +253,7 @@ def prepare_excel_report_1(df_edited, dot_manual_df=None):
                 'Tổng Cọc Học Thử': tong_coc_ht,
                 '% sai số-sai đối tượng/ Tổng data đã chia': (sub_sai_so / sub_data * 100) if sub_data else 0,
                 '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng': (sub_tn_chua_goi / sub_base * 100) if sub_base else 0,
+                '% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng': (sub_chua_trao_doi_autocall / sub_base * 100) if sub_base else 0,
                 '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng': (sub_trao_doi / sub_base * 100) if sub_base else 0,
                 '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng': (sub_tiem_nang / sub_base * 100) if sub_base else 0,
                 '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng': (sub_coc_chot / sub_base * 100) if sub_base else 0,
@@ -263,6 +274,7 @@ def prepare_excel_report_1(df_edited, dot_manual_df=None):
         tot_sai_so = person_rows['Sai Số - Sai Đối Tượng'].sum()
         tot_base = tot_data - tot_sai_so
         tot_tn_chua_goi = person_rows['Tiềm Năng Chưa Gọi'].sum()
+        tot_chua_trao_doi_autocall = person_rows['Data Chưa Trao Đổi + Auto Call'].sum()
         tot_trao_doi = person_rows['Data Trao Đổi Được'].sum()
         tot_tiem_nang = person_rows['Data Tiềm Năng'].sum()
         tot_coc_chot = person_rows['Data Cọc Chốt'].sum()
@@ -274,6 +286,7 @@ def prepare_excel_report_1(df_edited, dot_manual_df=None):
             'Người phụ trách': '',
             'Sai Số - Sai Đối Tượng': tot_sai_so,
             'Tiềm Năng Chưa Gọi': tot_tn_chua_goi,
+            'Data Chưa Trao Đổi + Auto Call': tot_chua_trao_doi_autocall,
             'Data Trao Đổi Được': tot_trao_doi,
             'Data Tiềm Năng': tot_tiem_nang,
             'Data Cọc Chốt': tot_coc_chot,
@@ -283,6 +296,7 @@ def prepare_excel_report_1(df_edited, dot_manual_df=None):
             'Tổng Cọc Học Thử': total_tong_coc,
             '% sai số-sai đối tượng/ Tổng data đã chia': (tot_sai_so / tot_data * 100) if tot_data else 0,
             '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng': (tot_tn_chua_goi / tot_base * 100) if tot_base else 0,
+            '% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng': (tot_chua_trao_doi_autocall / tot_base * 100) if tot_base else 0,
             '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng': (tot_trao_doi / tot_base * 100) if tot_base else 0,
             '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng': (tot_tiem_nang / tot_base * 100) if tot_base else 0,
             '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng': (tot_coc_chot / tot_base * 100) if tot_base else 0,
