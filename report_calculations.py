@@ -412,11 +412,20 @@ def compute_report_3(df_filtered):
     if df_filtered.empty:
         return pd.DataFrame()
     
+    fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
+
     # Expand weighted sources
     rows = []
     for _, row in df_filtered.iterrows():
-        sources_weights = row.get("_sources_with_weights", [("Khác", 1.0)])
-        age_group = row.get("Nhóm tuổi", "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG")
+        # pandas Series.get() returns NaN (not default) when column exists but value is NaN
+        # Must explicitly check for NaN/None
+        sources_weights = row.get("_sources_with_weights")
+        if not isinstance(sources_weights, list):
+            sources_weights = [("Khác", 1.0)]
+        
+        age_group = row.get("Nhóm tuổi")
+        if not isinstance(age_group, str) or not age_group.strip():
+            age_group = "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
         
         for source_classified, weight in sources_weights:
             rows.append({
@@ -424,11 +433,16 @@ def compute_report_3(df_filtered):
                 "Nhóm tuổi": age_group,
                 "Weight": weight
             })
+
     
     expanded_df = pd.DataFrame(rows)
     
     # Pivot table: sum weights by (Nguồn, Nhóm tuổi)
     pivot = expanded_df.groupby(["Nguồn", "Nhóm tuổi"])["Weight"].sum().unstack(fill_value=0)
+    
+    from data_processing import AGE_GROUPS
+    # Reindex với toàn bộ AGE_GROUPS để giữ cột "SALE CHƯA ĐIỀN..." cho việc tính tổng & Khác
+    pivot = pivot.reindex(columns=AGE_GROUPS, fill_value=0)
     
     # Thêm dòng TỔNG CỘNG
     total_row = pivot.sum()
@@ -463,8 +477,28 @@ def compute_report_3(df_filtered):
         pivot["Khác (HS1+45-60+60+Chưa điền)"] / pivot["TỔNG"] * 100
     ).round(2)
     
+    # Ensure index name is set before reset_index so it becomes a column named 'Nguồn'
+    pivot.index.name = "Nguồn"
     # Reset index to make "Nguồn" a regular column
     result_df = pivot.reset_index()
+    
+    result_df.insert(0, 'Thời gian xuất data', fetch_time)
+    
+    consolidated_cols = [
+        "HS cấp 2+3", "HS cấp 2+3 (%)",
+        "SV + DL <45", "SV + DL <45 (%)",
+        "Khác (HS1+45-60+60+Chưa điền)", "Khác (HS1+45-60+60+Chưa điền) (%)"
+    ]
+    
+    cols_order = (
+        ['Thời gian xuất data', 'Nguồn']
+        + AGE_GROUPS  # 8 cột nhóm tuổi (bao gồm SALE CHƯA ĐIỀN & ĐIỀN TRÙNG)
+        + ['TỔNG']
+        + [f"{g} (%)" for g in AGE_GROUPS]  # % columns cho cả 8 nhóm
+        + consolidated_cols
+    )
+    
+    result_df = result_df[cols_order]
     
     # Round all numeric columns to 2 decimals
     numeric_cols = result_df.select_dtypes(include=['number']).columns

@@ -261,16 +261,21 @@ AGE_GROUPS = [
     "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
 ]
 
+# Lookup dict: lowercase → tên chuẩn trong AGE_GROUPS (dùng cho so sánh case-insensitive)
+_AGE_GROUP_LOOKUP = {g.lower(): g for g in AGE_GROUPS[:-1]}
+
 def classify_age_group(description):
     """
     Phân loại nhóm tuổi từ trường description.
+    So sánh case-insensitive: "Sinh Viên" → "Sinh viên", "Người đi làm dưới 45 Tuổi" → "Người đi làm dưới 45 tuổi"
     Nếu rỗng hoặc không khớp 7 nhóm đầu → SALE CHƯA ĐIỀN & ĐIỀN TRÙNG
     """
     if not description or not isinstance(description, str) or not description.strip():
         return "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
-    desc = description.strip()
-    if desc in AGE_GROUPS[:-1]:
-        return desc
+    desc = description.strip().lower()
+    canonical = _AGE_GROUP_LOOKUP.get(desc)
+    if canonical:
+        return canonical
     return "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
 
 # ==========================================
