@@ -25,7 +25,8 @@ from report_calculations import (
     compute_report_2,
     compute_report_3,
     prepare_excel_report_1,
-    prepare_excel_report_2
+    prepare_excel_report_2,
+    aggregate_report_2_rows
 )
 
 # Re-export để app.py import trực tiếp không bị lỗi
@@ -198,23 +199,11 @@ def render_report_2(result_2):
 
     # Dòng tổng cố định ở đầu bảng (pinned top row)
     if not df_to_show.empty:
-        total_data = float(df_to_show['Tổng data chạy được'].sum())
-        total_trung = int(dot_manual_df['Data trùng'].sum()) if not dot_manual_df.empty else 0
-        total_zalo = int(dot_manual_df['Data vào nhóm Zalo'].sum()) if not dot_manual_df.empty else 0
-        total_order = int(dot_manual_df['Data order'].sum()) if not dot_manual_df.empty else 0
-        total_trung_bq = int(dot_manual_df['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum()) if not dot_manual_df.empty else 0
-        total_lien_he = total_data + total_trung
+        time_val = df_to_show['Thời gian xuất data'].iloc[0] if len(df_to_show) > 0 else ''
+        pinned_row = aggregate_report_2_rows(df_to_show, time_val, '', '📊 TỔNG CỘNG')
+        # Loại bỏ Tỷ lệ data thực tế/data order khỏi pinned row nếu bạn muốn Grid tự hiển thị bằng valueGetter.
+        # Nhưng để có sẵn value cũng không sao vì valueGetter ưu tiên data row.
         
-        pinned_row = {
-            'Thời gian xuất data': df_to_show['Thời gian xuất data'].iloc[0],
-            'Nguồn': '📊 TỔNG CỘNG',
-            'Tổng data chạy được': total_data,
-            'Data trùng': total_trung,
-            'Tổng data cần liên hệ': total_lien_he,
-            'Data vào nhóm Zalo': total_zalo,
-            'Data order': total_order,
-            'Data trùng bình quân 1 ngày trên 1 cố vấn': total_trung_bq,
-        }
         grid_options["pinnedTopRowData"] = [pinned_row]
 
     # Hiển thị AgGrid
@@ -253,9 +242,34 @@ def render_report_3(result_3):
         st.warning("⚠️ Không có dữ liệu để hiển thị.")
         return
     
-    # Hiển thị DataFrame thông thường (không cần AgGrid phức tạp)
+    df_to_show = result_3.copy()
+    
+    # Các cột cần gộp với phần trăm
+    cols_to_merge = [
+        "Học sinh cấp 1", "Học sinh cấp 2", "Học sinh cấp 3",
+        "Sinh viên", "Người đi làm dưới 45 tuổi", 
+        "Người đi làm từ 45 đến dưới 60 tuổi", "Người trên 60 tuổi",
+        "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG",
+        "HS cấp 2+3", "SV + DL <45", "Khác (HS1+45-60+60+Chưa điền)"
+    ]
+    
+    for col in cols_to_merge:
+        pct_col = f"{col} (%)"
+        if col in df_to_show.columns and pct_col in df_to_show.columns:
+            def format_cell(row):
+                if pd.isnull(row[col]):
+                    return ""
+                # Định dạng số lượng: nếu là số nguyên thì không hiện .0, nếu là số lẻ thì hiện tối đa 2 chữ số
+                val = row[col]
+                val_str = f"{val:g}" if val == int(val) else f"{val:.2f}"
+                return f"{val_str} ({row[pct_col]}%)"
+                
+            df_to_show[col] = df_to_show.apply(format_cell, axis=1)
+            df_to_show.drop(columns=[pct_col], inplace=True)
+            
+    # Hiển thị DataFrame
     st.dataframe(
-        result_3,
+        df_to_show,
         width='stretch',
         hide_index=False
     )

@@ -331,6 +331,28 @@ def prepare_excel_report_1(df_edited, dot_manual_df=None):
     return df_excel
 
 
+def aggregate_report_2_rows(df_rows, time_val, dot_val, nguon_val):
+    """Tính tổng các cột cho Báo cáo 2 từ một DataFrame con và trả về 1 dict đại diện cho dòng tổng."""
+    tot_data = float(df_rows['Tổng data chạy được'].sum())
+    tot_trung = int(df_rows['Data trùng'].sum())
+    tot_lien_he = float(df_rows['Tổng data cần liên hệ'].sum())
+    tot_zalo = int(df_rows['Data vào nhóm Zalo'].sum())
+    tot_order = int(df_rows['Data order'].sum())
+    tot_trung_bq = int(df_rows['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum())
+
+    return {
+        'Thời gian xuất data': time_val,
+        'ĐỢT HỌC THỬ': dot_val,
+        'Nguồn': nguon_val,
+        'Tổng data chạy được': tot_data,
+        'Data trùng': tot_trung,
+        'Tổng data cần liên hệ': tot_lien_he,
+        'Data vào nhóm Zalo': tot_zalo,
+        'Data order': tot_order,
+        'Data trùng bình quân 1 ngày trên 1 cố vấn': tot_trung_bq,
+        'Tỷ lệ data thực tế/data order': (tot_data / tot_order * 100) if tot_order else 0.0,
+    }
+
 def prepare_excel_report_2(df_edited, dot_manual_df=None):
     """Tính toán bảng hoàn chỉnh gồm phần trăm và dòng tổng cộng cho Report 2 (dùng cho download Excel)."""
     df_excel = df_edited.copy()
@@ -344,25 +366,8 @@ def prepare_excel_report_2(df_edited, dot_manual_df=None):
         group = df_excel[df_excel['ĐỢT HỌC THỬ'] == dot_name].copy()
         result_parts.append(group)
 
-        sub_data = float(group['Tổng data chạy được'].sum())
-        sub_trung = int(group['Data trùng'].sum())
-        sub_lien_he = float(group['Tổng data cần liên hệ'].sum())
-        sub_zalo = int(group['Data vào nhóm Zalo'].sum())
-        sub_order = int(group['Data order'].sum())
-        sub_trung_bq = int(group['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum())
-        
-        subtotal = {
-            'Thời gian xuất data': group['Thời gian xuất data'].iloc[0],
-            'ĐỢT HỌC THỬ': f'TỔNG {dot_name}',
-            'Nguồn': '',
-            'Tổng data chạy được': sub_data,
-            'Data trùng': sub_trung,
-            'Tổng data cần liên hệ': sub_lien_he,
-            'Data vào nhóm Zalo': sub_zalo,
-            'Data order': sub_order,
-            'Data trùng bình quân 1 ngày trên 1 cố vấn': sub_trung_bq,
-            'Tỷ lệ data thực tế/data order': (sub_data / sub_order * 100) if sub_order else 0.0,
-        }
+        time_val = group['Thời gian xuất data'].iloc[0] if len(group) > 0 else ''
+        subtotal = aggregate_report_2_rows(group, time_val, f'TỔNG {dot_name}', '')
         result_parts.append(pd.DataFrame([subtotal]))
 
     df_excel = pd.concat(result_parts, ignore_index=True)
@@ -371,25 +376,8 @@ def prepare_excel_report_2(df_edited, dot_manual_df=None):
     detail_mask = ~df_excel['ĐỢT HỌC THỬ'].astype(str).str.startswith('TỔNG ')
     detail_rows = df_excel[detail_mask]
     
-    tot_data = float(detail_rows['Tổng data chạy được'].sum())
-    tot_trung = int(detail_rows['Data trùng'].sum())
-    tot_lien_he = float(detail_rows['Tổng data cần liên hệ'].sum())
-    tot_zalo = int(detail_rows['Data vào nhóm Zalo'].sum())
-    tot_order = int(detail_rows['Data order'].sum())
-    tot_trung_bq = int(detail_rows['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum())
-
-    total_row = {
-        'Thời gian xuất data': df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else '',
-        'ĐỢT HỌC THỬ': 'TỔNG CỘNG',
-        'Nguồn': '',
-        'Tổng data chạy được': tot_data,
-        'Data trùng': tot_trung,
-        'Tổng data cần liên hệ': tot_lien_he,
-        'Data vào nhóm Zalo': tot_zalo,
-        'Data order': tot_order,
-        'Data trùng bình quân 1 ngày trên 1 cố vấn': tot_trung_bq,
-        'Tỷ lệ data thực tế/data order': (tot_data / tot_order * 100) if tot_order else 0.0,
-    }
+    time_val = df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else ''
+    total_row = aggregate_report_2_rows(detail_rows, time_val, 'TỔNG CỘNG', '')
 
     df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
     return df_excel
@@ -457,16 +445,17 @@ def compute_report_3(df_filtered):
     # Calculate percentages
     for col in pivot.columns:
         if col != "TỔNG":
-            pivot[f"{col} (%)"] = (pivot[col] / pivot["TỔNG"] * 100).round(2)
+            # Sử dụng mask để tránh chia cho 0 sinh ra NaN
+            pivot[f"{col} (%)"] = (pivot[col] / pivot["TỔNG"].replace(0, 1) * 100).where(pivot["TỔNG"] > 0, 0).round(2)
     
     # Consolidated groups
     # HS cấp 2 + HS cấp 3
     pivot["HS cấp 2+3"] = pivot.get("Học sinh cấp 2", 0) + pivot.get("Học sinh cấp 3", 0)
-    pivot["HS cấp 2+3 (%)"] = (pivot["HS cấp 2+3"] / pivot["TỔNG"] * 100).round(2)
+    pivot["HS cấp 2+3 (%)"] = (pivot["HS cấp 2+3"] / pivot["TỔNG"].replace(0, 1) * 100).round(2)
     
     # SV + Người đi làm dưới 45
     pivot["SV + DL <45"] = pivot.get("Sinh viên", 0) + pivot.get("Người đi làm dưới 45 tuổi", 0)
-    pivot["SV + DL <45 (%)"] = (pivot["SV + DL <45"] / pivot["TỔNG"] * 100).round(2)
+    pivot["SV + DL <45 (%)"] = (pivot["SV + DL <45"] / pivot["TỔNG"].replace(0, 1) * 100).round(2)
     
     # Khác: HS1 + 45-60 + 60+ + Chưa điền
     pivot["Khác (HS1+45-60+60+Chưa điền)"] = (
@@ -476,7 +465,7 @@ def compute_report_3(df_filtered):
         pivot.get("SALE CHƯA ĐIỀN & ĐIỀN TRÙNG", 0)
     )
     pivot["Khác (HS1+45-60+60+Chưa điền) (%)"] = (
-        pivot["Khác (HS1+45-60+60+Chưa điền)"] / pivot["TỔNG"] * 100
+        pivot["Khác (HS1+45-60+60+Chưa điền)"] / pivot["TỔNG"].replace(0, 1) * 100
     ).round(2)
     
     # Ensure index name is set before reset_index so it becomes a column named 'Nguồn'
