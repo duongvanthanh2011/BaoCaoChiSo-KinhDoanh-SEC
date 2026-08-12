@@ -127,51 +127,74 @@ def compute_report_1(df_filtered):
 
 def compute_report_2(df_filtered):
     """
-    Tính toán Báo cáo 2: Theo Đợt học thử & Nguồn khách hàng (ADS-TC, ADS-CG, ORG, KHÁC).
+    Tính toán Báo cáo 2: Theo Đợt học thử & Nguồn khách hàng.
+    Sử dụng logic phân loại nguồn và chia trọng số 1/N.
     """
     if df_filtered.empty:
         cols = [
             'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn',
-            'Tổng số Data', 'Data order', '50% data order',
-            '% data đã chia / 50% data order', '% data đã chia / data order'
+            'Tổng data chạy được', 'Data trùng', 'Tổng data cần liên hệ',
+            'Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn',
+            'Tỷ lệ data thực tế/data order'
         ]
         return pd.DataFrame(columns=cols)
 
     fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
 
-    df_work = df_filtered.copy()
-    df_work['_classified_source'] = df_work['_nguon_kh_list'].apply(
-        lambda x: _classify_nguon(x[0]) if isinstance(x, list) and x else "KHÁC"
-    )
+    # Expand weighted sources
+    rows = []
+    for _, row in df_filtered.iterrows():
+        sources_weights = row.get("_sources_with_weights")
+        if not isinstance(sources_weights, list):
+            sources_weights = [("Khác", 1.0)]
+        
+        dot = row.get("ĐỢT HỌC THỬ", "Chưa xác định")
+        
+        for source_classified, weight in sources_weights:
+            rows.append({
+                "ĐỢT HỌC THỬ": dot,
+                "Nguồn": source_classified,
+                "Weight": weight
+            })
+
+    expanded_df = pd.DataFrame(rows)
+    
+    if expanded_df.empty:
+        cols = [
+            'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn',
+            'Tổng data chạy được', 'Data trùng', 'Tổng data cần liên hệ',
+            'Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn',
+            'Tỷ lệ data thực tế/data order'
+        ]
+        return pd.DataFrame(columns=cols)
 
     result_2 = (
-        df_work
-        .groupby(["ĐỢT HỌC THỬ", "_classified_source"])
-        .agg(Count=("Mã KH", "count"))
+        expanded_df.groupby(["ĐỢT HỌC THỬ", "Nguồn"])["Weight"]
+        .sum()
         .reset_index()
     )
 
     result_2.rename(columns={
-        "_classified_source": "Nguồn",
-        "Count": "Tổng số Data"
+        "Weight": "Tổng data chạy được"
     }, inplace=True)
 
     result_2['Thời gian xuất data'] = fetch_time
+    result_2['Data trùng'] = 0
+    result_2['Tổng data cần liên hệ'] = result_2['Tổng data chạy được']
+    result_2['Data vào nhóm Zalo'] = 0
     result_2['Data order'] = 0
-    result_2['50% data order'] = 0.0
-
-    result_2['% data đã chia / 50% data order'] = 0.0
-    result_2['% data đã chia / data order'] = 0.0
+    result_2['Data trùng bình quân 1 ngày trên 1 cố vấn'] = 0
+    result_2['Tỷ lệ data thực tế/data order'] = 0.0
 
     cols_order = [
         'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn',
-        'Tổng số Data', 'Data order', '50% data order',
-        '% data đã chia / 50% data order', '% data đã chia / data order'
+        'Tổng data chạy được', 'Data trùng', 'Tổng data cần liên hệ',
+        'Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn',
+        'Tỷ lệ data thực tế/data order'
     ]
     result_2 = result_2[cols_order]
 
-    result_2['Tổng số Data'] = result_2['Tổng số Data'].astype(int)
-    result_2['Data order'] = result_2['Data order'].astype(int)
+    result_2['Tổng data chạy được'] = result_2['Tổng data chạy được'].round(2)
 
     return result_2
 
@@ -312,84 +335,63 @@ def prepare_excel_report_2(df_edited, dot_manual_df=None):
     """Tính toán bảng hoàn chỉnh gồm phần trăm và dòng tổng cộng cho Report 2 (dùng cho download Excel)."""
     df_excel = df_edited.copy()
 
-    if dot_manual_df is not None and not dot_manual_df.empty:
-        # Data order thuộc cấp đợt, không thuộc từng nguồn chi tiết.
-        df_excel['Data order'] = 0
-        df_excel['50% data order'] = 0.0
-        df_excel['% data đã chia / 50% data order'] = 0.0
-        df_excel['% data đã chia / data order'] = 0.0
-
-        result_parts = []
-        for dot_name in df_excel['ĐỢT HỌC THỬ'].unique():
-            group = df_excel[df_excel['ĐỢT HỌC THỬ'] == dot_name]
-            result_parts.append(group)
-
-            data_order = 0
-            dot_row = dot_manual_df[dot_manual_df['ĐỢT HỌC THỬ'] == dot_name]
-            if not dot_row.empty:
-                data_order = int(dot_row['Data order'].iloc[0])
-
-            sub_data = int(group['Tổng số Data'].sum())
-            half_order = data_order * 0.5
-            subtotal = {
-                'Thời gian xuất data': group['Thời gian xuất data'].iloc[0],
-                'ĐỢT HỌC THỬ': f'TỔNG {dot_name}',
-                'Nguồn': '',
-                'Tổng số Data': sub_data,
-                'Data order': data_order,
-                '50% data order': half_order,
-                '% data đã chia / 50% data order': (sub_data / half_order * 100) if half_order else 0,
-                '% data đã chia / data order': (sub_data / data_order * 100) if data_order else 0,
-            }
-            result_parts.append(pd.DataFrame([subtotal]))
-
-        df_excel = pd.concat(result_parts, ignore_index=True)
-
-        detail_mask = ~df_excel['ĐỢT HỌC THỬ'].astype(str).str.startswith('TỔNG ')
-        detail_rows = df_excel[detail_mask]
-        total_data = int(detail_rows['Tổng số Data'].sum())
-        total_order = int(dot_manual_df['Data order'].sum())
-        half_total = total_order * 0.5
-
-        total_row = {
-            'Thời gian xuất data': df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else '',
-            'ĐỢT HỌC THỬ': 'TỔNG CỘNG',
-            'Nguồn': '',
-            'Tổng số Data': total_data,
-            'Data order': total_order,
-            '50% data order': half_total,
-            '% data đã chia / 50% data order': (total_data / half_total * 100) if half_total else 0,
-            '% data đã chia / data order': (total_data / total_order * 100) if total_order else 0,
-        }
-
-        df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
+    if df_excel.empty:
         return df_excel
 
-    # Tính % trên từng dòng
-    data_order = df_excel['Data order'].replace(0, float('nan'))
-    half_order = data_order * 0.5
-    df_excel['50% data order'] = half_order.fillna(0)
-    df_excel['% data đã chia / 50% data order'] = (df_excel['Tổng số Data'] / half_order * 100).fillna(0)
-    df_excel['% data đã chia / data order'] = (df_excel['Tổng số Data'] / data_order * 100).fillna(0)
+    result_parts = []
+    
+    for dot_name in df_excel['ĐỢT HỌC THỬ'].unique():
+        group = df_excel[df_excel['ĐỢT HỌC THỬ'] == dot_name].copy()
+        result_parts.append(group)
 
-    if not df_excel.empty:
-        total_data = int(df_excel['Tổng số Data'].sum())
-        total_order = int(df_excel['Data order'].sum())
-        half_total = total_order * 0.5
-
-        total_row = {
-            'Thời gian xuất data': df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else '',
-            'ĐỢT HỌC THỬ': 'TỔNG CỘNG',
+        sub_data = float(group['Tổng data chạy được'].sum())
+        sub_trung = int(group['Data trùng'].sum())
+        sub_lien_he = float(group['Tổng data cần liên hệ'].sum())
+        sub_zalo = int(group['Data vào nhóm Zalo'].sum())
+        sub_order = int(group['Data order'].sum())
+        sub_trung_bq = int(group['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum())
+        
+        subtotal = {
+            'Thời gian xuất data': group['Thời gian xuất data'].iloc[0],
+            'ĐỢT HỌC THỬ': f'TỔNG {dot_name}',
             'Nguồn': '',
-            'Tổng số Data': total_data,
-            'Data order': total_order,
-            '50% data order': half_total,
-            '% data đã chia / 50% data order': (total_data / half_total * 100) if half_total else 0,
-            '% data đã chia / data order': (total_data / total_order * 100) if total_order else 0,
+            'Tổng data chạy được': sub_data,
+            'Data trùng': sub_trung,
+            'Tổng data cần liên hệ': sub_lien_he,
+            'Data vào nhóm Zalo': sub_zalo,
+            'Data order': sub_order,
+            'Data trùng bình quân 1 ngày trên 1 cố vấn': sub_trung_bq,
+            'Tỷ lệ data thực tế/data order': (sub_data / sub_order * 100) if sub_order else 0.0,
         }
+        result_parts.append(pd.DataFrame([subtotal]))
 
-        df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
+    df_excel = pd.concat(result_parts, ignore_index=True)
 
+    # Tính dòng TỔNG CỘNG
+    detail_mask = ~df_excel['ĐỢT HỌC THỬ'].astype(str).str.startswith('TỔNG ')
+    detail_rows = df_excel[detail_mask]
+    
+    tot_data = float(detail_rows['Tổng data chạy được'].sum())
+    tot_trung = int(detail_rows['Data trùng'].sum())
+    tot_lien_he = float(detail_rows['Tổng data cần liên hệ'].sum())
+    tot_zalo = int(detail_rows['Data vào nhóm Zalo'].sum())
+    tot_order = int(detail_rows['Data order'].sum())
+    tot_trung_bq = int(detail_rows['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum())
+
+    total_row = {
+        'Thời gian xuất data': df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else '',
+        'ĐỢT HỌC THỬ': 'TỔNG CỘNG',
+        'Nguồn': '',
+        'Tổng data chạy được': tot_data,
+        'Data trùng': tot_trung,
+        'Tổng data cần liên hệ': tot_lien_he,
+        'Data vào nhóm Zalo': tot_zalo,
+        'Data order': tot_order,
+        'Data trùng bình quân 1 ngày trên 1 cố vấn': tot_trung_bq,
+        'Tỷ lệ data thực tế/data order': (tot_data / tot_order * 100) if tot_order else 0.0,
+    }
+
+    df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
     return df_excel
 
 

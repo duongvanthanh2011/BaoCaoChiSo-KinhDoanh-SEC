@@ -256,55 +256,8 @@ function(params){
 """)
 
 # ==========================================
-# JS GETTERS & STYLES CHO BÁO CÁO 2 (% data đã chia)
+# JS GETTERS & STYLES CHO BÁO CÁO 2
 # ==========================================
-
-getter_pct_r2_half = JsCode("""
-function(params) {
-    var totalData = 0, dataOrder = 0;
-    if (params.node && params.node.rowPinned) {
-        totalData = params.data ? (params.data['Tổng số Data'] || 0) : 0;
-        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
-    } else if (params.node && (params.node.group || params.node.footer) && params.node.level === 0) {
-        totalData = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
-        dataOrder = params.node.aggData ? (params.node.aggData['Data order'] || 0) : 0;
-    } else {
-        return null;
-    }
-    var halfOrder = dataOrder * 0.5;
-    return halfOrder > 0 ? (totalData / halfOrder * 100) : 0;
-}
-""")
-
-getter_half_order = JsCode("""
-function(params) {
-    var dataOrder = 0;
-    if (params.node && params.node.rowPinned) {
-        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
-    } else if (params.node && (params.node.group || params.node.footer) && params.node.level === 0) {
-        dataOrder = params.node.aggData ? (params.node.aggData['Data order'] || 0) : 0;
-    } else {
-        return null;
-    }
-    return dataOrder * 0.5;
-}
-""")
-
-getter_pct_r2_full = JsCode("""
-function(params) {
-    var totalData = 0, dataOrder = 0;
-    if (params.node && params.node.rowPinned) {
-        totalData = params.data ? (params.data['Tổng số Data'] || 0) : 0;
-        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
-    } else if (params.node && (params.node.group || params.node.footer) && params.node.level === 0) {
-        totalData = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
-        dataOrder = params.node.aggData ? (params.node.aggData['Data order'] || 0) : 0;
-    } else {
-        return null;
-    }
-    return dataOrder > 0 ? (totalData / dataOrder * 100) : 0;
-}
-""")
 
 formatter_r2_dot_manual_value = JsCode("""
 function(params) {
@@ -313,6 +266,23 @@ function(params) {
         return params.value;
     }
     return '';
+}
+""")
+
+getter_pct_r2_full = JsCode("""
+function(params) {
+    var totalData = 0, dataOrder = 0;
+    if (params.node && params.node.rowPinned) {
+        totalData = params.data ? (params.data['Tổng data chạy được'] || 0) : 0;
+        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
+    } else if (params.node && (params.node.group || params.node.footer) && params.node.level === 0) {
+        totalData = params.node.aggData ? (params.node.aggData['Tổng data chạy được'] || 0) : 0;
+        dataOrder = params.node.aggData ? (params.node.aggData['Data order'] || 0) : 0;
+    } else {
+        totalData = params.data ? (params.data['Tổng data chạy được'] || 0) : 0;
+        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
+    }
+    return dataOrder > 0 ? (totalData / dataOrder * 100) : 0;
 }
 """)
 
@@ -436,7 +406,7 @@ def configure_standard_grid_columns(gb, count_cols):
         headerName="% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng",
         aggFunc="sum",
         valueFormatter=formatter_merged,
-        cellStyle=style_merged,
+        # cellStyle=style_merged,
         width=120
     )
     gb.configure_column(
@@ -484,37 +454,31 @@ def configure_standard_grid_columns(gb, count_cols):
 
 def configure_report2_grid_columns(gb, count_cols):
     """
-    Cấu hình các cột cho Báo cáo 2: Nguồn, Tổng số Data, Data order (nhập tay),
-    và 2 cột % tính toán động.
+    Cấu hình các cột cho Báo cáo 2: Nguồn, Tổng data chạy được, các cột nhập tay,
+    và cột tỷ lệ.
     """
     # Cấu hình tự động xuống dòng cho header
     gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
 
     for c in count_cols:
-        gb.configure_column(c, aggFunc="sum", width=110)
+        gb.configure_column(c, aggFunc="sum", width=130)
 
+    manual_cols = ['Data trùng', 'Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn']
+    for c in manual_cols:
+        gb.configure_column(
+            c,
+            aggFunc="sum",
+            width=130
+        )
+        
     gb.configure_column(
-        "Data order",
-        editable=False,
+        "Tổng data cần liên hệ",
         aggFunc="sum",
-        valueFormatter=formatter_r2_dot_manual_value,
-        width=110
-    )
-
-    gb.configure_column(
-        "50% data order",
-        valueGetter=getter_half_order,
         width=130
     )
 
     gb.configure_column(
-        "% data đã chia / 50% data order",
-        valueGetter=getter_pct_r2_half,
-        valueFormatter=pct_formatter,
-        width=160
-    )
-    gb.configure_column(
-        "% data đã chia / data order",
+        "Tỷ lệ data thực tế/data order",
         valueGetter=getter_pct_r2_full,
         cellStyle=style_pct_r2_full,
         valueFormatter=pct_formatter,
