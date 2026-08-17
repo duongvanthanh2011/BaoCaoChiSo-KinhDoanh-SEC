@@ -130,14 +130,15 @@ def compute_report_2(df_filtered):
     Tính toán Báo cáo 2: Theo Đợt học thử & Nguồn khách hàng.
     Sử dụng logic phân loại nguồn và chia trọng số 1/N.
     """
+    cols_order = [
+        'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn',
+        'Tổng data chạy được', 'Data trùng', 'Tổng data cần liên hệ',
+        'Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn',
+        'Tỷ lệ data thực tế/data order'
+    ]
+
     if df_filtered.empty:
-        cols = [
-            'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn',
-            'Tổng data chạy được', 'Data trùng', 'Tổng data cần liên hệ',
-            'Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn',
-            'Tỷ lệ data thực tế/data order'
-        ]
-        return pd.DataFrame(columns=cols)
+        return pd.DataFrame(columns=cols_order)
 
     fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
 
@@ -149,6 +150,8 @@ def compute_report_2(df_filtered):
             sources_weights = [("Khác", 1.0)]
         
         dot = row.get("ĐỢT HỌC THỬ", "Chưa xác định")
+        if not isinstance(dot, str) or not dot.strip():
+            dot = "Chưa xác định"
         
         for source_classified, weight in sources_weights:
             rows.append({
@@ -160,13 +163,7 @@ def compute_report_2(df_filtered):
     expanded_df = pd.DataFrame(rows)
     
     if expanded_df.empty:
-        cols = [
-            'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn',
-            'Tổng data chạy được', 'Data trùng', 'Tổng data cần liên hệ',
-            'Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn',
-            'Tỷ lệ data thực tế/data order'
-        ]
-        return pd.DataFrame(columns=cols)
+        return pd.DataFrame(columns=cols_order)
 
     result_2 = (
         expanded_df.groupby(["ĐỢT HỌC THỬ", "Nguồn"])["Weight"]
@@ -183,18 +180,13 @@ def compute_report_2(df_filtered):
     result_2['Tổng data cần liên hệ'] = result_2['Tổng data chạy được']
     result_2['Data vào nhóm Zalo'] = 0
     result_2['Data order'] = 0
-    result_2['Data trùng bình quân 1 ngày trên 1 cố vấn'] = 0
+    result_2['Data trùng bình quân 1 ngày trên 1 cố vấn'] = 0.0
     result_2['Tỷ lệ data thực tế/data order'] = 0.0
 
-    cols_order = [
-        'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn',
-        'Tổng data chạy được', 'Data trùng', 'Tổng data cần liên hệ',
-        'Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn',
-        'Tỷ lệ data thực tế/data order'
-    ]
     result_2 = result_2[cols_order]
 
     result_2['Tổng data chạy được'] = result_2['Tổng data chạy được'].round(2)
+    result_2['Tổng data cần liên hệ'] = result_2['Tổng data cần liên hệ'].round(2)
 
     return result_2
 
@@ -331,14 +323,20 @@ def prepare_excel_report_1(df_edited, dot_manual_df=None):
     return df_excel
 
 
-def aggregate_report_2_rows(df_rows, time_val, dot_val, nguon_val):
+def aggregate_report_2_rows(df_rows, time_val, dot_val, nguon_val, dot_manual_values=None):
     """Tính tổng các cột cho Báo cáo 2 từ một DataFrame con và trả về 1 dict đại diện cho dòng tổng."""
-    tot_data = float(df_rows['Tổng data chạy được'].sum())
-    tot_trung = int(df_rows['Data trùng'].sum())
-    tot_lien_he = float(df_rows['Tổng data cần liên hệ'].sum())
-    tot_zalo = int(df_rows['Data vào nhóm Zalo'].sum())
-    tot_order = int(df_rows['Data order'].sum())
-    tot_trung_bq = int(df_rows['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum())
+    tot_data = round(float(df_rows['Tổng data chạy được'].sum()), 2)
+    tot_trung = int(df_rows['Data trùng'].sum()) if 'Data trùng' in df_rows else 0
+    tot_lien_he = round(tot_data + tot_trung, 2)
+    
+    if dot_manual_values:
+        tot_zalo = int(dot_manual_values.get('Data vào nhóm Zalo', 0))
+        tot_order = int(dot_manual_values.get('Data order', 0))
+        tot_trung_bq = round(float(dot_manual_values.get('Data trùng bình quân 1 ngày trên 1 cố vấn', 0.0)), 2)
+    else:
+        tot_zalo = int(df_rows['Data vào nhóm Zalo'].sum()) if 'Data vào nhóm Zalo' in df_rows else 0
+        tot_order = int(df_rows['Data order'].sum()) if 'Data order' in df_rows else 0
+        tot_trung_bq = round(float(df_rows['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum()), 2) if 'Data trùng bình quân 1 ngày trên 1 cố vấn' in df_rows else 0.0
 
     return {
         'Thời gian xuất data': time_val,
@@ -350,7 +348,7 @@ def aggregate_report_2_rows(df_rows, time_val, dot_val, nguon_val):
         'Data vào nhóm Zalo': tot_zalo,
         'Data order': tot_order,
         'Data trùng bình quân 1 ngày trên 1 cố vấn': tot_trung_bq,
-        'Tỷ lệ data thực tế/data order': (tot_data / tot_order * 100) if tot_order else 0.0,
+        'Tỷ lệ data thực tế/data order': round(tot_data / tot_order * 100, 2) if tot_order else 0.0,
     }
 
 def prepare_excel_report_2(df_edited, dot_manual_df=None):
@@ -364,10 +362,42 @@ def prepare_excel_report_2(df_edited, dot_manual_df=None):
     
     for dot_name in df_excel['ĐỢT HỌC THỬ'].unique():
         group = df_excel[df_excel['ĐỢT HỌC THỬ'] == dot_name].copy()
-        result_parts.append(group)
+        
+        # Ở cấp nguồn chi tiết: không hiển thị Data Zalo, Order, BQ, Tỷ lệ (chỉ hiển thị ở dòng tổng đợt)
+        group_display = group.copy()
+        group_display['Data vào nhóm Zalo'] = None
+        group_display['Data order'] = None
+        group_display['Data trùng bình quân 1 ngày trên 1 cố vấn'] = None
+        group_display['Tỷ lệ data thực tế/data order'] = None
+        result_parts.append(group_display)
 
         time_val = group['Thời gian xuất data'].iloc[0] if len(group) > 0 else ''
-        subtotal = aggregate_report_2_rows(group, time_val, f'TỔNG {dot_name}', '')
+        
+        dot_zalo = 0
+        dot_order = 0
+        dot_trung_bq = 0.0
+        if dot_manual_df is not None and not dot_manual_df.empty:
+            m_row = dot_manual_df[dot_manual_df['ĐỢT HỌC THỬ'] == dot_name]
+            if not m_row.empty:
+                dot_zalo = int(m_row['Data vào nhóm Zalo'].iloc[0])
+                dot_order = int(m_row['Data order'].iloc[0])
+                dot_trung_bq = round(float(m_row['Data trùng bình quân 1 ngày trên 1 cố vấn'].iloc[0]), 2)
+        else:
+            dot_zalo = int(group['Data vào nhóm Zalo'].sum())
+            dot_order = int(group['Data order'].sum())
+            dot_trung_bq = round(float(group['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum()), 2)
+
+        subtotal = aggregate_report_2_rows(
+            group,
+            time_val,
+            f'TỔNG {dot_name}',
+            '',
+            dot_manual_values={
+                'Data vào nhóm Zalo': dot_zalo,
+                'Data order': dot_order,
+                'Data trùng bình quân 1 ngày trên 1 cố vấn': dot_trung_bq
+            }
+        )
         result_parts.append(pd.DataFrame([subtotal]))
 
     df_excel = pd.concat(result_parts, ignore_index=True)
@@ -377,7 +407,22 @@ def prepare_excel_report_2(df_edited, dot_manual_df=None):
     detail_rows = df_excel[detail_mask]
     
     time_val = df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else ''
-    total_row = aggregate_report_2_rows(detail_rows, time_val, 'TỔNG CỘNG', '')
+    
+    tot_zalo = int(dot_manual_df['Data vào nhóm Zalo'].sum()) if dot_manual_df is not None and not dot_manual_df.empty else 0
+    tot_order = int(dot_manual_df['Data order'].sum()) if dot_manual_df is not None and not dot_manual_df.empty else 0
+    tot_trung_bq = round(float(dot_manual_df['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum()), 2) if dot_manual_df is not None and not dot_manual_df.empty else 0.0
+
+    total_row = aggregate_report_2_rows(
+        detail_rows,
+        time_val,
+        'TỔNG CỘNG',
+        '',
+        dot_manual_values={
+            'Data vào nhóm Zalo': tot_zalo,
+            'Data order': tot_order,
+            'Data trùng bình quân 1 ngày trên 1 cố vấn': tot_trung_bq
+        }
+    )
 
     df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
     return df_excel
@@ -389,29 +434,40 @@ def prepare_excel_report_2(df_edited, dot_manual_df=None):
 
 def compute_report_3(df_filtered):
     """
-    Tính toán Báo cáo 3: Ma trận Nguồn × Độ tuổi với trọng số và tỷ lệ phần trăm.
+    Tính toán Báo cáo 3: Ma trận Nguồn × Độ tuổi phân theo Đợt học thử với trọng số.
     
     Returns:
-        pd.DataFrame: Pivot table với các cột:
+        pd.DataFrame với các cột:
+        - Thời gian xuất data
+        - ĐỢT HỌC THỬ
         - Nguồn
         - Các nhóm tuổi (8 cột)
         - TỔNG
-        - Các cột % cho từng nhóm tuổi
         - Nhóm tổng hợp: HS cấp 2+3, SV + DL <45, Khác (HS1+45-60+60+Chưa điền)
     """
+    from data_processing import AGE_GROUPS
+
+    cols_order = (
+        ['Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn']
+        + AGE_GROUPS
+        + ['TỔNG', 'HS cấp 2+3', 'SV + DL <45', 'Khác (HS1+45-60+60+Chưa điền)']
+    )
+
     if df_filtered.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=cols_order)
     
     fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
 
-    # Expand weighted sources
+    # Expand weighted sources with ĐỢT HỌC THỬ
     rows = []
     for _, row in df_filtered.iterrows():
-        # pandas Series.get() returns NaN (not default) when column exists but value is NaN
-        # Must explicitly check for NaN/None
         sources_weights = row.get("_sources_with_weights")
         if not isinstance(sources_weights, list):
             sources_weights = [("Khác", 1.0)]
+        
+        dot = row.get("ĐỢT HỌC THỬ", "Chưa xác định")
+        if not isinstance(dot, str) or not dot.strip():
+            dot = "Chưa xác định"
         
         age_group = row.get("Nhóm tuổi")
         if not isinstance(age_group, str) or not age_group.strip():
@@ -419,43 +475,36 @@ def compute_report_3(df_filtered):
         
         for source_classified, weight in sources_weights:
             rows.append({
+                "ĐỢT HỌC THỬ": dot,
                 "Nguồn": source_classified,
                 "Nhóm tuổi": age_group,
                 "Weight": weight
             })
 
-    
     expanded_df = pd.DataFrame(rows)
+    if expanded_df.empty:
+        return pd.DataFrame(columns=cols_order)
     
-    # Pivot table: sum weights by (Nguồn, Nhóm tuổi)
-    pivot = expanded_df.groupby(["Nguồn", "Nhóm tuổi"])["Weight"].sum().unstack(fill_value=0)
+    # Pivot table: sum weights by (ĐỢT HỌC THỬ, Nguồn, Nhóm tuổi)
+    pivot = (
+        expanded_df
+        .groupby(["ĐỢT HỌC THỬ", "Nguồn", "Nhóm tuổi"])["Weight"]
+        .sum()
+        .unstack(fill_value=0)
+    )
     
-    from data_processing import AGE_GROUPS
-    # Reindex với toàn bộ AGE_GROUPS để giữ cột "SALE CHƯA ĐIỀN..." cho việc tính tổng & Khác
+    # Reindex với toàn bộ AGE_GROUPS
     pivot = pivot.reindex(columns=AGE_GROUPS, fill_value=0)
     
-    # Thêm dòng TỔNG CỘNG
-    total_row = pivot.sum()
-    total_row.name = "TỔNG CỘNG"
-    pivot = pd.concat([pivot, total_row.to_frame().T])
-    
-    # Add TỔNG column
-    pivot["TỔNG"] = pivot.sum(axis=1)
-    
-    # Calculate percentages
-    for col in pivot.columns:
-        if col != "TỔNG":
-            # Sử dụng mask để tránh chia cho 0 sinh ra NaN
-            pivot[f"{col} (%)"] = (pivot[col] / pivot["TỔNG"].replace(0, 1) * 100).where(pivot["TỔNG"] > 0, 0).round(2)
+    # Tính TỔNG theo hàng (tổng tất cả nhóm tuổi của nguồn đó trong đợt đó)
+    pivot["TỔNG"] = pivot[AGE_GROUPS].sum(axis=1)
     
     # Consolidated groups
     # HS cấp 2 + HS cấp 3
     pivot["HS cấp 2+3"] = pivot.get("Học sinh cấp 2", 0) + pivot.get("Học sinh cấp 3", 0)
-    pivot["HS cấp 2+3 (%)"] = (pivot["HS cấp 2+3"] / pivot["TỔNG"].replace(0, 1) * 100).round(2)
     
     # SV + Người đi làm dưới 45
     pivot["SV + DL <45"] = pivot.get("Sinh viên", 0) + pivot.get("Người đi làm dưới 45 tuổi", 0)
-    pivot["SV + DL <45 (%)"] = (pivot["SV + DL <45"] / pivot["TỔNG"].replace(0, 1) * 100).round(2)
     
     # Khác: HS1 + 45-60 + 60+ + Chưa điền
     pivot["Khác (HS1+45-60+60+Chưa điền)"] = (
@@ -464,30 +513,11 @@ def compute_report_3(df_filtered):
         pivot.get("Người trên 60 tuổi", 0) +
         pivot.get("SALE CHƯA ĐIỀN & ĐIỀN TRÙNG", 0)
     )
-    pivot["Khác (HS1+45-60+60+Chưa điền) (%)"] = (
-        pivot["Khác (HS1+45-60+60+Chưa điền)"] / pivot["TỔNG"].replace(0, 1) * 100
-    ).round(2)
     
-    # Ensure index name is set before reset_index so it becomes a column named 'Nguồn'
-    pivot.index.name = "Nguồn"
-    # Reset index to make "Nguồn" a regular column
+    # Reset index để đưa ĐỢT HỌC THỬ và Nguồn thành các cột bình thường
     result_df = pivot.reset_index()
-    
+    result_df.columns.name = None
     result_df.insert(0, 'Thời gian xuất data', fetch_time)
-    
-    consolidated_cols = [
-        "HS cấp 2+3", "HS cấp 2+3 (%)",
-        "SV + DL <45", "SV + DL <45 (%)",
-        "Khác (HS1+45-60+60+Chưa điền)", "Khác (HS1+45-60+60+Chưa điền) (%)"
-    ]
-    
-    cols_order = (
-        ['Thời gian xuất data', 'Nguồn']
-        + AGE_GROUPS  # 8 cột nhóm tuổi (bao gồm SALE CHƯA ĐIỀN & ĐIỀN TRÙNG)
-        + ['TỔNG']
-        + [f"{g} (%)" for g in AGE_GROUPS]  # % columns cho cả 8 nhóm
-        + consolidated_cols
-    )
     
     result_df = result_df[cols_order]
     
@@ -496,3 +526,69 @@ def compute_report_3(df_filtered):
     result_df[numeric_cols] = result_df[numeric_cols].round(2)
     
     return result_df
+
+
+def aggregate_report_3_rows(df_rows, time_val, dot_val, nguon_val):
+    """Tính tổng các cột cho Báo cáo 3 từ một DataFrame con và trả về 1 dict đại diện cho dòng tổng."""
+    from data_processing import AGE_GROUPS
+    
+    row_dict = {
+        'Thời gian xuất data': time_val,
+        'ĐỢT HỌC THỬ': dot_val,
+        'Nguồn': nguon_val,
+    }
+    
+    for g in AGE_GROUPS:
+        row_dict[g] = round(float(df_rows[g].sum()), 2) if g in df_rows else 0.0
+        
+    tot = round(float(df_rows['TỔNG'].sum()), 2) if 'TỔNG' in df_rows else 0.0
+    row_dict['TỔNG'] = tot
+    
+    # Consolidated groups
+    row_dict['HS cấp 2+3'] = round(float(df_rows['HS cấp 2+3'].sum()), 2) if 'HS cấp 2+3' in df_rows else 0.0
+    row_dict['SV + DL <45'] = round(float(df_rows['SV + DL <45'].sum()), 2) if 'SV + DL <45' in df_rows else 0.0
+    row_dict['Khác (HS1+45-60+60+Chưa điền)'] = (
+        round(float(df_rows['Khác (HS1+45-60+60+Chưa điền)'].sum()), 2)
+        if 'Khác (HS1+45-60+60+Chưa điền)' in df_rows else 0.0
+    )
+    
+    return row_dict
+
+
+def prepare_excel_report_3(df_report_3):
+    """Chuẩn bị DataFrame hoàn chỉnh cho Report 3 để xuất Excel (bao gồm dòng tổng đợt, tổng cộng và các cột %)."""
+    if df_report_3.empty:
+        return df_report_3
+        
+    df_excel = df_report_3.copy()
+    from data_processing import AGE_GROUPS
+    
+    result_parts = []
+    
+    for dot_name in df_excel['ĐỢT HỌC THỬ'].unique():
+        group = df_excel[df_excel['ĐỢT HỌC THỬ'] == dot_name].copy()
+        result_parts.append(group)
+        
+        time_val = group['Thời gian xuất data'].iloc[0] if len(group) > 0 else ''
+        subtotal = aggregate_report_3_rows(group, time_val, f'TỔNG {dot_name}', '')
+        result_parts.append(pd.DataFrame([subtotal]))
+        
+    df_result = pd.concat(result_parts, ignore_index=True)
+    
+    # Tính dòng TỔNG CỘNG
+    detail_mask = ~df_result['ĐỢT HỌC THỬ'].astype(str).str.startswith('TỔNG ')
+    detail_rows = df_result[detail_mask]
+    time_val = df_result['Thời gian xuất data'].iloc[0] if len(df_result) > 0 else ''
+    total_row = aggregate_report_3_rows(detail_rows, time_val, 'TỔNG CỘNG', '')
+    
+    df_result = pd.concat([df_result, pd.DataFrame([total_row])], ignore_index=True)
+    
+    # Tính các cột % cho Excel
+    for g in AGE_GROUPS:
+        df_result[f"{g} (%)"] = (df_result[g] / df_result['TỔNG'].replace(0, 1) * 100).where(df_result['TỔNG'] > 0, 0).round(2)
+        
+    df_result['HS cấp 2+3 (%)'] = (df_result['HS cấp 2+3'] / df_result['TỔNG'].replace(0, 1) * 100).where(df_result['TỔNG'] > 0, 0).round(2)
+    df_result['SV + DL <45 (%)'] = (df_result['SV + DL <45'] / df_result['TỔNG'].replace(0, 1) * 100).where(df_result['TỔNG'] > 0, 0).round(2)
+    df_result['Khác (HS1+45-60+60+Chưa điền) (%)'] = (df_result['Khác (HS1+45-60+60+Chưa điền)'] / df_result['TỔNG'].replace(0, 1) * 100).where(df_result['TỔNG'] > 0, 0).round(2)
+    
+    return df_result

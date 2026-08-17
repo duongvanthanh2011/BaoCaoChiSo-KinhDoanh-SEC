@@ -284,32 +284,28 @@ def classify_age_group(description):
 
 def classify_source_with_priority(label):
     """
-    Phân loại nguồn theo priority:
-    1. Google Ads (chứa GG)
-    2. Khác (chứa staff hoặc org)
-    3. Ads Trường Chinh
-    4. Ads Cầu Giấy
+    Phân loại nguồn theo 3 nhóm:
+    1. Khác (chứa 'staff' hoặc 'org')
+    2. Trường Chinh (kết hợp Ads Trường Chinh + Google Ads: chứa 'gg', 'trường chinh', 'truong chinh')
+    3. Cầu Giấy (Ads Cầu Giấy: chứa 'cầu giấy', 'cau giay')
+    4. Khác (các trường hợp còn lại)
     """
     if not isinstance(label, str):
         return "Khác"
     
     label_lower = label.lower()
     
-    # Priority 1: Google Ads (chứa GG, GG1, GG2, ...)
-    if "gg" in label_lower:
-        return "Google Ads"
-    
-    # Priority 2: Khác (chứa staff hoặc org)
+    # Priority 1: Khác (chứa staff hoặc org)
     if "staff" in label_lower or "org" in label_lower:
         return "Khác"
     
-    # Priority 3: Ads Trường Chinh
-    if "trường chinh" in label_lower or "truong chinh" in label_lower:
-        return "Ads Trường Chinh"
+    # Priority 2: Trường Chinh (kết hợp Ads Trường Chinh + Google Ads)
+    if "gg" in label_lower or "trường chinh" in label_lower or "truong chinh" in label_lower:
+        return "Trường Chinh"
     
-    # Priority 4: Ads Cầu Giấy
+    # Priority 3: Cầu Giấy (Ads Cầu Giấy)
     if "cầu giấy" in label_lower or "cau giay" in label_lower:
-        return "Ads Cầu Giấy"
+        return "Cầu Giấy"
     
     return "Khác"
 

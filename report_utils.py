@@ -259,11 +259,53 @@ function(params){
 # JS GETTERS & STYLES CHO BÁO CÁO 2
 # ==========================================
 
+formatter_float_2_decimals = JsCode("""
+function(params) {
+    var val = params.value;
+    if (val === undefined || val === null || val === '') {
+        if (params.node && params.node.group && params.node.aggData) {
+            val = params.node.aggData[params.colDef.field];
+        }
+    }
+    if (val === undefined || val === null || val === '') return '0';
+    var num = Number(val);
+    if (isNaN(num)) return val;
+    if (num === Math.floor(num)) return num.toString();
+    return num.toFixed(2);
+}
+""")
+
 formatter_r2_dot_manual_value = JsCode("""
 function(params) {
     if (params.node && (params.node.rowPinned || params.node.group || params.node.footer)) {
-        if (params.value === undefined || params.value === null) return '';
-        return params.value;
+        var val = params.value;
+        if (val === undefined || val === null || val === '') {
+            if (params.node.aggData) {
+                val = params.node.aggData[params.colDef.field];
+            }
+        }
+        if (val === undefined || val === null || val === '') return '';
+        var num = Number(val);
+        if (isNaN(num)) return val;
+        return num.toString();
+    }
+    return '';
+}
+""")
+
+formatter_r2_data_trung_bq = JsCode("""
+function(params) {
+    if (params.node && (params.node.rowPinned || params.node.group || params.node.footer)) {
+        var val = params.value;
+        if (val === undefined || val === null || val === '') {
+            if (params.node.aggData) {
+                val = params.node.aggData[params.colDef.field];
+            }
+        }
+        if (val === undefined || val === null || val === '') return '';
+        var num = Number(val);
+        if (isNaN(num)) return val;
+        return num.toFixed(2);
     }
     return '';
 }
@@ -279,8 +321,8 @@ function(params) {
         totalData = params.node.aggData ? (params.node.aggData['Tổng data chạy được'] || 0) : 0;
         dataOrder = params.node.aggData ? (params.node.aggData['Data order'] || 0) : 0;
     } else {
-        totalData = params.data ? (params.data['Tổng data chạy được'] || 0) : 0;
-        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
+        // Chỉ tính theo từng đợt, không tính riêng cho từng nhóm nguồn
+        return null;
     }
     return dataOrder > 0 ? (totalData / dataOrder * 100) : 0;
 }
@@ -289,9 +331,84 @@ function(params) {
 style_pct_r2_full = JsCode("""
 function(params) {
     var val = params.value;
-    if (val === undefined || val === null) return {};
+    if (val === undefined || val === null || isNaN(val)) return {};
     if (val >= 95 && val <= 105) return {'backgroundColor':'#ccffcc'};
     return {'backgroundColor':'#fff2cc'};
+}
+""")
+
+
+# ==========================================
+# JS GETTERS & FORMATTERS CHO BÁO CÁO 3
+# ==========================================
+
+formatter_r3_age_group = JsCode("""
+function(params) {
+    var val = params.value;
+    if (val === undefined || val === null) {
+        if (params.node && params.node.group && params.node.aggData) {
+            val = params.node.aggData[params.colDef.field] || 0;
+        } else if (params.data) {
+            val = params.data[params.colDef.field] || 0;
+        } else {
+            return '';
+        }
+    }
+    
+    var total = 0;
+    if (params.node && params.node.rowPinned) {
+        total = params.data ? (params.data['TỔNG'] || 0) : 0;
+    } else if (params.node && (params.node.group || params.node.footer)) {
+        total = params.node.aggData ? (params.node.aggData['TỔNG'] || 0) : 0;
+    } else {
+        total = params.data ? (params.data['TỔNG'] || 0) : 0;
+    }
+    
+    var num = Number(val);
+    if (isNaN(num)) num = 0;
+    var numStr = (num % 1 === 0) ? num.toString() : num.toFixed(2);
+    var pct = total > 0 ? (num / total * 100) : 0;
+    return numStr + ' (' + pct.toFixed(2) + '%)';
+}
+""")
+
+formatter_r3_tong = JsCode("""
+function(params) {
+    var val = params.value;
+    if (val === undefined || val === null) {
+        if (params.node && params.node.group && params.node.aggData) {
+            val = params.node.aggData['TỔNG'] || 0;
+        } else if (params.data) {
+            val = params.data['TỔNG'] || 0;
+        } else {
+            return '';
+        }
+    }
+    
+    var num = Number(val);
+    if (isNaN(num)) num = 0;
+    var numStr = (num % 1 === 0) ? num.toString() : num.toFixed(2);
+    var pct = 0;
+    
+    if (params.node && params.node.rowPinned) {
+        pct = 100;
+    } else if (params.node && (params.node.group || params.node.footer) && params.node.level === 0) {
+        var grandTotal = 0;
+        if (params.api && typeof params.api.getPinnedTopRow === 'function') {
+            var topRow = params.api.getPinnedTopRow(0);
+            if (topRow && topRow.data) {
+                grandTotal = topRow.data['TỔNG'] || 0;
+            }
+        }
+        pct = grandTotal > 0 ? (num / grandTotal * 100) : 100;
+    } else if (params.node && params.node.parent && params.node.parent.aggData) {
+        var dotTotal = params.node.parent.aggData['TỔNG'] || 0;
+        pct = dotTotal > 0 ? (num / dotTotal * 100) : 0;
+    } else {
+        pct = 100;
+    }
+    
+    return numStr + ' (' + pct.toFixed(2) + '%)';
 }
 """)
 
@@ -452,7 +569,7 @@ def configure_standard_grid_columns(gb, count_cols):
     )
 
 
-def configure_report2_grid_columns(gb, count_cols):
+def configure_report2_grid_columns(gb, count_cols=None):
     """
     Cấu hình các cột cho Báo cáo 2: Nguồn, Tổng data chạy được, các cột nhập tay,
     và cột tỷ lệ.
@@ -460,21 +577,45 @@ def configure_report2_grid_columns(gb, count_cols):
     # Cấu hình tự động xuống dòng cho header
     gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
 
-    for c in count_cols:
-        gb.configure_column(c, aggFunc="sum", width=130)
+    gb.configure_column(
+        "Tổng data chạy được",
+        aggFunc="sum",
+        valueFormatter=formatter_float_2_decimals,
+        width=130
+    )
 
-    manual_cols = ['Data trùng', 'Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn']
-    for c in manual_cols:
-        gb.configure_column(
-            c,
-            aggFunc="sum",
-            width=130
-        )
+    gb.configure_column(
+        "Data trùng",
+        aggFunc="sum",
+        width=120
+    )
         
     gb.configure_column(
         "Tổng data cần liên hệ",
         aggFunc="sum",
+        valueFormatter=formatter_float_2_decimals,
+        width=140
+    )
+
+    gb.configure_column(
+        "Data vào nhóm Zalo",
+        aggFunc="sum",
+        valueFormatter=formatter_r2_dot_manual_value,
         width=130
+    )
+
+    gb.configure_column(
+        "Data order",
+        aggFunc="sum",
+        valueFormatter=formatter_r2_dot_manual_value,
+        width=130
+    )
+
+    gb.configure_column(
+        "Data trùng bình quân 1 ngày trên 1 cố vấn",
+        aggFunc="sum",
+        valueFormatter=formatter_r2_data_trung_bq,
+        width=160
     )
 
     gb.configure_column(
@@ -484,6 +625,46 @@ def configure_report2_grid_columns(gb, count_cols):
         valueFormatter=pct_formatter,
         width=160
     )
+
+
+def configure_report3_grid_columns(gb):
+    """
+    Cấu hình các cột cho Báo cáo 3: Ma trận Nguồn × Nhóm tuổi.
+    Bao gồm 8 nhóm tuổi, cột TỔNG, và 3 nhóm gộp, tất cả đều hiển thị Số lượng (%).
+    """
+    # Cấu hình tự động xuống dòng cho header
+    gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
+
+    from data_processing import AGE_GROUPS
+
+    for col in AGE_GROUPS:
+        gb.configure_column(
+            col,
+            aggFunc="sum",
+            valueFormatter=formatter_r3_age_group,
+            width=140
+        )
+
+    gb.configure_column(
+        "TỔNG",
+        aggFunc="sum",
+        valueFormatter=formatter_r3_tong,
+        width=140,
+        cellStyle={'fontWeight': 'bold'}
+    )
+
+    consolidated_cols = [
+        "HS cấp 2+3",
+        "SV + DL <45",
+        "Khác (HS1+45-60+60+Chưa điền)"
+    ]
+    for col in consolidated_cols:
+        gb.configure_column(
+            col,
+            aggFunc="sum",
+            valueFormatter=formatter_r3_age_group,
+            width=150
+        )
 
 
 def update_manual_inputs_in_state(grid_response, state_key, keys, editable_cols=None):
