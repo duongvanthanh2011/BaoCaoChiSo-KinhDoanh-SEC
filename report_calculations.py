@@ -125,6 +125,50 @@ def compute_report_1(df_filtered):
     return result
 
 
+def expand_weighted_sources(df_filtered, extra_columns=None):
+    """
+    Mở rộng _sources_with_weights thành từng dòng riêng biệt theo trọng số.
+    Dùng chung cho Báo cáo 2 và Báo cáo 3 để tránh lặp logic.
+
+    Args:
+        df_filtered: DataFrame đã lọc, chứa cột _sources_with_weights.
+        extra_columns: Dict {tên_cột_nguồn: giá_trị_mặc_định} cho các cột bổ sung
+                       (ví dụ {"Nhóm tuổi": "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"}).
+
+    Returns:
+        pd.DataFrame với các cột: ĐỢT HỌC THỬ, Nguồn, Weight, + extra_columns.
+    """
+    extra_columns = extra_columns or {}
+    rows = []
+    for _, row in df_filtered.iterrows():
+        sources_weights = row.get("_sources_with_weights")
+        if not isinstance(sources_weights, list):
+            sources_weights = [("Khác", 1.0)]
+
+        dot = row.get("ĐỢT HỌC THỬ", "Chưa xác định")
+        if not isinstance(dot, str) or not dot.strip():
+            dot = "Chưa xác định"
+
+        # Lấy giá trị các cột bổ sung từ row gốc
+        extra_vals = {}
+        for col_name, default_val in extra_columns.items():
+            val = row.get(col_name)
+            if not isinstance(val, str) or not val.strip():
+                val = default_val
+            extra_vals[col_name] = val
+
+        for source_classified, weight in sources_weights:
+            entry = {
+                "ĐỢT HỌC THỬ": dot,
+                "Nguồn": source_classified,
+                "Weight": weight,
+            }
+            entry.update(extra_vals)
+            rows.append(entry)
+
+    return pd.DataFrame(rows)
+
+
 def compute_report_2(df_filtered):
     """
     Tính toán Báo cáo 2: Theo Đợt học thử & Nguồn khách hàng.
@@ -142,26 +186,7 @@ def compute_report_2(df_filtered):
 
     fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
 
-    # Expand weighted sources
-    rows = []
-    for _, row in df_filtered.iterrows():
-        sources_weights = row.get("_sources_with_weights")
-        if not isinstance(sources_weights, list):
-            sources_weights = [("Khác", 1.0)]
-        
-        dot = row.get("ĐỢT HỌC THỬ", "Chưa xác định")
-        if not isinstance(dot, str) or not dot.strip():
-            dot = "Chưa xác định"
-        
-        for source_classified, weight in sources_weights:
-            rows.append({
-                "ĐỢT HỌC THỬ": dot,
-                "Nguồn": source_classified,
-                "Weight": weight
-            })
-
-    expanded_df = pd.DataFrame(rows)
-    
+    expanded_df = expand_weighted_sources(df_filtered)
     if expanded_df.empty:
         return pd.DataFrame(columns=cols_order)
 
@@ -214,113 +239,118 @@ def compute_excel_percentages(df_excel):
     return df_excel
 
 
+def build_excel_with_subtotals(df, aggregate_fn, pre_process_group_fn=None):
+    """
+    Xây dựng DataFrame Excel hoàn chỉnh với dòng tổng theo đợt và dòng tổng cộng.
+    Dùng chung cho prepare_excel_report_1, _2, _3 để tránh lặp cấu trúc loop+concat.
+
+    Args:
+        df: DataFrame gốc (đã copy).
+        aggregate_fn: Callable(group_df, time_val, dot_label, nguon_label) → dict (dòng tổng).
+        pre_process_group_fn: Optional Callable(group_df) → group_df. Xử lý group trước khi append
+                              (ví dụ: xóa Zalo/Order ở Report 2).
+
+    Returns:
+        pd.DataFrame hoàn chỉnh với subtotal rows và grand total row.
+    """
+    if df.empty:
+        return df
+
+    result_parts = []
+    for dot_name in df['ĐỢT HỌC THỬ'].unique():
+        group = df[df['ĐỢT HỌC THỬ'] == dot_name].copy()
+
+        # Xử lý trước nếu cần (ví dụ: ẩn cột ở dòng chi tiết)
+        display_group = pre_process_group_fn(group) if pre_process_group_fn else group
+        result_parts.append(display_group)
+
+        time_val = group['Thời gian xuất data'].iloc[0] if len(group) > 0 else ''
+        subtotal = aggregate_fn(group, time_val, f'TỔNG {dot_name}', '')
+        result_parts.append(pd.DataFrame([subtotal]))
+
+    df_result = pd.concat(result_parts, ignore_index=True)
+
+    # Tính dòng TỔNG CỘNG từ dòng chi tiết (không tính dòng tổng đợt)
+    detail_mask = ~df_result['ĐỢT HỌC THỬ'].astype(str).str.startswith('TỔNG ')
+    detail_rows = df_result[detail_mask]
+    time_val = df_result['Thời gian xuất data'].iloc[0] if len(df_result) > 0 else ''
+    total_row = aggregate_fn(detail_rows, time_val, 'TỔNG CỘNG', '')
+
+    df_result = pd.concat([df_result, pd.DataFrame([total_row])], ignore_index=True)
+    return df_result
+
+
+def _aggregate_report_1_row(dot_manual_df=None):
+    """Trả về một hàm aggregate cho Report 1 (closure chứa dot_manual_df)."""
+    def aggregate_fn(group, time_val, dot_label, nguon_label):
+        sub_data = group['Tổng số Data'].sum()
+        sub_sai_so = group['Sai Số - Sai Đối Tượng'].sum()
+        sub_base = sub_data - sub_sai_so
+        sub_tn_chua_goi = group['Tiềm Năng Chưa Gọi'].sum()
+        sub_chua_trao_doi_autocall = group['Data Chưa Trao Đổi + Auto Call'].sum()
+        sub_trao_doi = group['Data Trao Đổi Được'].sum()
+        sub_tiem_nang = group['Data Tiềm Năng'].sum()
+        sub_coc_chot = group['Data Cọc Chốt'].sum()
+
+        # Lấy giá trị nhập tay cho đợt/tổng cộng
+        coc_khac = 0
+        tong_coc_ht = 0
+        # Tên đợt thực tế (bỏ prefix "TỔNG ")
+        real_dot = dot_label.replace('TỔNG ', '') if dot_label.startswith('TỔNG ') else None
+        if dot_manual_df is not None and not dot_manual_df.empty:
+            if dot_label == 'TỔNG CỘNG':
+                coc_khac = int(dot_manual_df['Cọc Khác'].sum())
+                tong_coc_ht = int(dot_manual_df['Tổng Cọc Học Thử'].sum())
+            elif real_dot:
+                m_row = dot_manual_df[dot_manual_df['ĐỢT HỌC THỬ'] == real_dot]
+                if not m_row.empty:
+                    coc_khac = int(m_row['Cọc Khác'].iloc[0])
+                    tong_coc_ht = int(m_row['Tổng Cọc Học Thử'].iloc[0])
+
+        return {
+            'Thời gian xuất data': time_val,
+            'ĐỢT HỌC THỬ': dot_label,
+            'Phòng ban': '',
+            'Người phụ trách': '',
+            'Sai Số - Sai Đối Tượng': sub_sai_so,
+            'Tiềm Năng Chưa Gọi': sub_tn_chua_goi,
+            'Data Chưa Trao Đổi + Auto Call': sub_chua_trao_doi_autocall,
+            'Data Trao Đổi Được': sub_trao_doi,
+            'Data Tiềm Năng': sub_tiem_nang,
+            'Data Cọc Chốt': sub_coc_chot,
+            'Tổng số Data': sub_data,
+            'Tổng số data trừ sai số': sub_base,
+            'Cọc Khác': coc_khac,
+            'Tổng Cọc Học Thử': tong_coc_ht,
+            '% sai số-sai đối tượng/ Tổng data đã chia': (sub_sai_so / sub_data * 100) if sub_data else 0,
+            '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng': (sub_tn_chua_goi / sub_base * 100) if sub_base else 0,
+            '% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng': (sub_chua_trao_doi_autocall / sub_base * 100) if sub_base else 0,
+            '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng': (sub_trao_doi / sub_base * 100) if sub_base else 0,
+            '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng': (sub_tiem_nang / sub_base * 100) if sub_base else 0,
+            '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng': (sub_coc_chot / sub_base * 100) if sub_base else 0,
+            '% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng': (tong_coc_ht / sub_base * 100) if sub_base else 0,
+        }
+    return aggregate_fn
+
+
 def prepare_excel_report_1(df_edited, dot_manual_df=None):
     """Tính toán bảng hoàn chỉnh gồm phần trăm, dòng tổng đợt và dòng tổng cộng cho Report 1 (dùng cho download Excel)."""
     df_excel = df_edited.copy()
-    
+
     # Xóa giá trị Cọc Khác và Tổng Cọc Học Thử ở cấp người phụ trách
     # (giá trị này thuộc cấp đợt, sẽ hiển thị ở dòng tổng đợt)
     df_excel['Cọc Khác'] = 0
     df_excel['Tổng Cọc Học Thử'] = 0
-    
-    df_excel = compute_excel_percentages(df_excel)
-    
-    if not df_excel.empty:
-        # Xây dựng bảng với dòng tổng theo từng đợt
-        result_parts = []
-        for dot_name in df_excel['ĐỢT HỌC THỬ'].unique():
-            group = df_excel[df_excel['ĐỢT HỌC THỬ'] == dot_name]
-            result_parts.append(group)
-            
-            # Lấy giá trị nhập tay cho đợt này
-            coc_khac = 0
-            tong_coc_ht = 0
-            if dot_manual_df is not None and not dot_manual_df.empty:
-                dot_row = dot_manual_df[dot_manual_df['ĐỢT HỌC THỬ'] == dot_name]
-                if not dot_row.empty:
-                    coc_khac = int(dot_row['Cọc Khác'].iloc[0])
-                    tong_coc_ht = int(dot_row['Tổng Cọc Học Thử'].iloc[0])
-            
-            # Tạo dòng tổng đợt
-            sub_data = group['Tổng số Data'].sum()
-            sub_sai_so = group['Sai Số - Sai Đối Tượng'].sum()
-            sub_base = sub_data - sub_sai_so
-            sub_tn_chua_goi = group['Tiềm Năng Chưa Gọi'].sum()
-            sub_chua_trao_doi_autocall = group['Data Chưa Trao Đổi + Auto Call'].sum()
-            sub_trao_doi = group['Data Trao Đổi Được'].sum()
-            sub_tiem_nang = group['Data Tiềm Năng'].sum()
-            sub_coc_chot = group['Data Cọc Chốt'].sum()
-            
-            subtotal = {
-                'Thời gian xuất data': group['Thời gian xuất data'].iloc[0],
-                'ĐỢT HỌC THỬ': f'TỔNG {dot_name}',
-                'Phòng ban': '',
-                'Người phụ trách': '',
-                'Sai Số - Sai Đối Tượng': sub_sai_so,
-                'Tiềm Năng Chưa Gọi': sub_tn_chua_goi,
-                'Data Chưa Trao Đổi + Auto Call': sub_chua_trao_doi_autocall,
-                'Data Trao Đổi Được': sub_trao_doi,
-                'Data Tiềm Năng': sub_tiem_nang,
-                'Data Cọc Chốt': sub_coc_chot,
-                'Tổng số Data': sub_data,
-                'Tổng số data trừ sai số': sub_base,
-                'Cọc Khác': coc_khac,
-                'Tổng Cọc Học Thử': tong_coc_ht,
-                '% sai số-sai đối tượng/ Tổng data đã chia': (sub_sai_so / sub_data * 100) if sub_data else 0,
-                '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng': (sub_tn_chua_goi / sub_base * 100) if sub_base else 0,
-                '% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng': (sub_chua_trao_doi_autocall / sub_base * 100) if sub_base else 0,
-                '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng': (sub_trao_doi / sub_base * 100) if sub_base else 0,
-                '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng': (sub_tiem_nang / sub_base * 100) if sub_base else 0,
-                '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng': (sub_coc_chot / sub_base * 100) if sub_base else 0,
-                '% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng': (tong_coc_ht / sub_base * 100) if sub_base else 0,
-            }
-            result_parts.append(pd.DataFrame([subtotal]))
-        
-        df_excel = pd.concat(result_parts, ignore_index=True)
-        
-        # Dòng TỔNG CỘNG cuối cùng — chỉ tính từ dòng chi tiết (không tính dòng tổng đợt)
-        person_mask = ~df_excel['ĐỢT HỌC THỬ'].astype(str).str.startswith('TỔNG ')
-        person_rows = df_excel[person_mask]
-        
-        total_coc_khac = int(dot_manual_df['Cọc Khác'].sum()) if dot_manual_df is not None and not dot_manual_df.empty else 0
-        total_tong_coc = int(dot_manual_df['Tổng Cọc Học Thử'].sum()) if dot_manual_df is not None and not dot_manual_df.empty else 0
-        
-        tot_data = person_rows['Tổng số Data'].sum()
-        tot_sai_so = person_rows['Sai Số - Sai Đối Tượng'].sum()
-        tot_base = tot_data - tot_sai_so
-        tot_tn_chua_goi = person_rows['Tiềm Năng Chưa Gọi'].sum()
-        tot_chua_trao_doi_autocall = person_rows['Data Chưa Trao Đổi + Auto Call'].sum()
-        tot_trao_doi = person_rows['Data Trao Đổi Được'].sum()
-        tot_tiem_nang = person_rows['Data Tiềm Năng'].sum()
-        tot_coc_chot = person_rows['Data Cọc Chốt'].sum()
-        
-        total_row = {
-            'Thời gian xuất data': df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else '',
-            'ĐỢT HỌC THỬ': 'TỔNG CỘNG',
-            'Phòng ban': '',
-            'Người phụ trách': '',
-            'Sai Số - Sai Đối Tượng': tot_sai_so,
-            'Tiềm Năng Chưa Gọi': tot_tn_chua_goi,
-            'Data Chưa Trao Đổi + Auto Call': tot_chua_trao_doi_autocall,
-            'Data Trao Đổi Được': tot_trao_doi,
-            'Data Tiềm Năng': tot_tiem_nang,
-            'Data Cọc Chốt': tot_coc_chot,
-            'Tổng số Data': tot_data,
-            'Tổng số data trừ sai số': tot_base,
-            'Cọc Khác': total_coc_khac,
-            'Tổng Cọc Học Thử': total_tong_coc,
-            '% sai số-sai đối tượng/ Tổng data đã chia': (tot_sai_so / tot_data * 100) if tot_data else 0,
-            '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng': (tot_tn_chua_goi / tot_base * 100) if tot_base else 0,
-            '% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng': (tot_chua_trao_doi_autocall / tot_base * 100) if tot_base else 0,
-            '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng': (tot_trao_doi / tot_base * 100) if tot_base else 0,
-            '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng': (tot_tiem_nang / tot_base * 100) if tot_base else 0,
-            '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng': (tot_coc_chot / tot_base * 100) if tot_base else 0,
-            '% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng': (total_tong_coc / tot_base * 100) if tot_base else 0,
-        }
-        
-        df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
 
-    return df_excel
+    df_excel = compute_excel_percentages(df_excel)
+
+    if df_excel.empty:
+        return df_excel
+
+    return build_excel_with_subtotals(
+        df_excel,
+        aggregate_fn=_aggregate_report_1_row(dot_manual_df)
+    )
 
 
 def aggregate_report_2_rows(df_rows, time_val, dot_val, nguon_val, dot_manual_values=None):
@@ -351,81 +381,59 @@ def aggregate_report_2_rows(df_rows, time_val, dot_val, nguon_val, dot_manual_va
         'Tỷ lệ data thực tế/data order': round(tot_data / tot_order * 100, 2) if tot_order else 0.0,
     }
 
+def _get_dot_manual_values(dot_manual_df, dot_name):
+    """Trích xuất giá trị nhập tay cho một đợt cụ thể từ dot_manual_df."""
+    if dot_manual_df is None or dot_manual_df.empty:
+        return None
+    m_row = dot_manual_df[dot_manual_df['ĐỢT HỌC THỬ'] == dot_name]
+    if m_row.empty:
+        return None
+    return {
+        'Data vào nhóm Zalo': int(m_row['Data vào nhóm Zalo'].iloc[0]),
+        'Data order': int(m_row['Data order'].iloc[0]),
+        'Data trùng bình quân 1 ngày trên 1 cố vấn': round(float(m_row['Data trùng bình quân 1 ngày trên 1 cố vấn'].iloc[0]), 2)
+    }
+
+
+def _aggregate_report_2_row_factory(dot_manual_df=None):
+    """Trả về aggregate_fn cho Report 2 (closure chứa dot_manual_df)."""
+    def aggregate_fn(group, time_val, dot_label, nguon_label):
+        real_dot = dot_label.replace('TỔNG ', '') if dot_label.startswith('TỔNG ') else None
+        if dot_label == 'TỔNG CỘNG':
+            dot_vals = {
+                'Data vào nhóm Zalo': int(dot_manual_df['Data vào nhóm Zalo'].sum()) if dot_manual_df is not None and not dot_manual_df.empty else 0,
+                'Data order': int(dot_manual_df['Data order'].sum()) if dot_manual_df is not None and not dot_manual_df.empty else 0,
+                'Data trùng bình quân 1 ngày trên 1 cố vấn': round(float(dot_manual_df['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum()), 2) if dot_manual_df is not None and not dot_manual_df.empty else 0.0
+            }
+        elif real_dot:
+            dot_vals = _get_dot_manual_values(dot_manual_df, real_dot)
+        else:
+            dot_vals = None
+        return aggregate_report_2_rows(group, time_val, dot_label, nguon_label, dot_manual_values=dot_vals)
+    return aggregate_fn
+
+
+def _hide_dot_level_cols_r2(group):
+    """Ẩn các cột chỉ hiển thị ở cấp đợt (Zalo, Order, BQ, Tỷ lệ) ở dòng chi tiết nguồn."""
+    display = group.copy()
+    display['Data vào nhóm Zalo'] = None
+    display['Data order'] = None
+    display['Data trùng bình quân 1 ngày trên 1 cố vấn'] = None
+    display['Tỷ lệ data thực tế/data order'] = None
+    return display
+
+
 def prepare_excel_report_2(df_edited, dot_manual_df=None):
     """Tính toán bảng hoàn chỉnh gồm phần trăm và dòng tổng cộng cho Report 2 (dùng cho download Excel)."""
     df_excel = df_edited.copy()
-
     if df_excel.empty:
         return df_excel
 
-    result_parts = []
-    
-    for dot_name in df_excel['ĐỢT HỌC THỬ'].unique():
-        group = df_excel[df_excel['ĐỢT HỌC THỬ'] == dot_name].copy()
-        
-        # Ở cấp nguồn chi tiết: không hiển thị Data Zalo, Order, BQ, Tỷ lệ (chỉ hiển thị ở dòng tổng đợt)
-        group_display = group.copy()
-        group_display['Data vào nhóm Zalo'] = None
-        group_display['Data order'] = None
-        group_display['Data trùng bình quân 1 ngày trên 1 cố vấn'] = None
-        group_display['Tỷ lệ data thực tế/data order'] = None
-        result_parts.append(group_display)
-
-        time_val = group['Thời gian xuất data'].iloc[0] if len(group) > 0 else ''
-        
-        dot_zalo = 0
-        dot_order = 0
-        dot_trung_bq = 0.0
-        if dot_manual_df is not None and not dot_manual_df.empty:
-            m_row = dot_manual_df[dot_manual_df['ĐỢT HỌC THỬ'] == dot_name]
-            if not m_row.empty:
-                dot_zalo = int(m_row['Data vào nhóm Zalo'].iloc[0])
-                dot_order = int(m_row['Data order'].iloc[0])
-                dot_trung_bq = round(float(m_row['Data trùng bình quân 1 ngày trên 1 cố vấn'].iloc[0]), 2)
-        else:
-            dot_zalo = int(group['Data vào nhóm Zalo'].sum())
-            dot_order = int(group['Data order'].sum())
-            dot_trung_bq = round(float(group['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum()), 2)
-
-        subtotal = aggregate_report_2_rows(
-            group,
-            time_val,
-            f'TỔNG {dot_name}',
-            '',
-            dot_manual_values={
-                'Data vào nhóm Zalo': dot_zalo,
-                'Data order': dot_order,
-                'Data trùng bình quân 1 ngày trên 1 cố vấn': dot_trung_bq
-            }
-        )
-        result_parts.append(pd.DataFrame([subtotal]))
-
-    df_excel = pd.concat(result_parts, ignore_index=True)
-
-    # Tính dòng TỔNG CỘNG
-    detail_mask = ~df_excel['ĐỢT HỌC THỬ'].astype(str).str.startswith('TỔNG ')
-    detail_rows = df_excel[detail_mask]
-    
-    time_val = df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else ''
-    
-    tot_zalo = int(dot_manual_df['Data vào nhóm Zalo'].sum()) if dot_manual_df is not None and not dot_manual_df.empty else 0
-    tot_order = int(dot_manual_df['Data order'].sum()) if dot_manual_df is not None and not dot_manual_df.empty else 0
-    tot_trung_bq = round(float(dot_manual_df['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum()), 2) if dot_manual_df is not None and not dot_manual_df.empty else 0.0
-
-    total_row = aggregate_report_2_rows(
-        detail_rows,
-        time_val,
-        'TỔNG CỘNG',
-        '',
-        dot_manual_values={
-            'Data vào nhóm Zalo': tot_zalo,
-            'Data order': tot_order,
-            'Data trùng bình quân 1 ngày trên 1 cố vấn': tot_trung_bq
-        }
+    return build_excel_with_subtotals(
+        df_excel,
+        aggregate_fn=_aggregate_report_2_row_factory(dot_manual_df),
+        pre_process_group_fn=_hide_dot_level_cols_r2
     )
-
-    df_excel = pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
-    return df_excel
 
 
 # ==========================================
@@ -458,30 +466,10 @@ def compute_report_3(df_filtered):
     
     fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
 
-    # Expand weighted sources with ĐỢT HỌC THỬ
-    rows = []
-    for _, row in df_filtered.iterrows():
-        sources_weights = row.get("_sources_with_weights")
-        if not isinstance(sources_weights, list):
-            sources_weights = [("Khác", 1.0)]
-        
-        dot = row.get("ĐỢT HỌC THỬ", "Chưa xác định")
-        if not isinstance(dot, str) or not dot.strip():
-            dot = "Chưa xác định"
-        
-        age_group = row.get("Nhóm tuổi")
-        if not isinstance(age_group, str) or not age_group.strip():
-            age_group = "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
-        
-        for source_classified, weight in sources_weights:
-            rows.append({
-                "ĐỢT HỌC THỬ": dot,
-                "Nguồn": source_classified,
-                "Nhóm tuổi": age_group,
-                "Weight": weight
-            })
-
-    expanded_df = pd.DataFrame(rows)
+    expanded_df = expand_weighted_sources(
+        df_filtered,
+        extra_columns={"Nhóm tuổi": "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"}
+    )
     if expanded_df.empty:
         return pd.DataFrame(columns=cols_order)
     
@@ -500,13 +488,8 @@ def compute_report_3(df_filtered):
     pivot["TỔNG"] = pivot[AGE_GROUPS].sum(axis=1)
     
     # Consolidated groups
-    # HS cấp 2 + HS cấp 3
     pivot["HS cấp 2+3"] = pivot.get("Học sinh cấp 2", 0) + pivot.get("Học sinh cấp 3", 0)
-    
-    # SV + Người đi làm dưới 45
     pivot["SV + DL <45"] = pivot.get("Sinh viên", 0) + pivot.get("Người đi làm dưới 45 tuổi", 0)
-    
-    # Khác: HS1 + 45-60 + 60+ + Chưa điền
     pivot["Khác (HS1+45-60+60+Chưa điền)"] = (
         pivot.get("Học sinh cấp 1", 0) +
         pivot.get("Người đi làm từ 45 đến dưới 60 tuổi", 0) +
@@ -563,25 +546,10 @@ def prepare_excel_report_3(df_report_3):
     df_excel = df_report_3.copy()
     from data_processing import AGE_GROUPS
     
-    result_parts = []
-    
-    for dot_name in df_excel['ĐỢT HỌC THỬ'].unique():
-        group = df_excel[df_excel['ĐỢT HỌC THỬ'] == dot_name].copy()
-        result_parts.append(group)
-        
-        time_val = group['Thời gian xuất data'].iloc[0] if len(group) > 0 else ''
-        subtotal = aggregate_report_3_rows(group, time_val, f'TỔNG {dot_name}', '')
-        result_parts.append(pd.DataFrame([subtotal]))
-        
-    df_result = pd.concat(result_parts, ignore_index=True)
-    
-    # Tính dòng TỔNG CỘNG
-    detail_mask = ~df_result['ĐỢT HỌC THỬ'].astype(str).str.startswith('TỔNG ')
-    detail_rows = df_result[detail_mask]
-    time_val = df_result['Thời gian xuất data'].iloc[0] if len(df_result) > 0 else ''
-    total_row = aggregate_report_3_rows(detail_rows, time_val, 'TỔNG CỘNG', '')
-    
-    df_result = pd.concat([df_result, pd.DataFrame([total_row])], ignore_index=True)
+    df_result = build_excel_with_subtotals(
+        df_excel,
+        aggregate_fn=aggregate_report_3_rows
+    )
     
     # Tính các cột % cho Excel
     for g in AGE_GROUPS:

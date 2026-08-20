@@ -3,9 +3,12 @@ report_components.py - Component UI dung chung cho cac bao cao.
 """
 
 import hashlib
+import io
 
 import pandas as pd
 import streamlit as st
+from st_aggrid import AgGrid
+from st_aggrid.grid_options_builder import GridOptionsBuilder
 
 
 DOT_COLUMN = 'ĐỢT HỌC THỬ'
@@ -286,3 +289,97 @@ def render_dot_nguon_matrix_inputs(title, state_key, unique_dots, unique_nguons,
             
     manual_df = pd.DataFrame(manual_rows)
     return manual_df, hash_dot_manual_df(manual_df)
+
+
+# ==========================================
+# CÁC COMPONENT DÙNG CHUNG CHO RENDER BÁO CÁO
+# ==========================================
+
+def render_aggrid_report(df, gb, pinned_row=None, grid_key="grid_report"):
+    """
+    Render bảng AgGrid chuẩn hóa với các tùy chọn grid options chung cho mọi báo cáo.
+    Loại bỏ trùng lặp boilerplate giữa render_report_1, _2, _3.
+
+    Args:
+        df: DataFrame hiển thị.
+        gb: GridOptionsBuilder đã cấu hình sẵn cột.
+        pinned_row: dict hoặc None — dòng tổng cố định ở đầu bảng.
+        grid_key: string — key duy nhất cho AgGrid component.
+    """
+    grid_options = gb.build()
+    grid_options["groupIncludeFooter"] = True
+    grid_options["groupIncludeTotalFooter"] = True
+    grid_options["groupDefaultExpanded"] = -1
+    grid_options["suppressAggFuncInHeader"] = True
+
+    if pinned_row is not None:
+        grid_options["pinnedTopRowData"] = [pinned_row]
+
+    AgGrid(
+        df,
+        gridOptions=grid_options,
+        enable_enterprise_modules=True,
+        allow_unsafe_jscode=True,
+        fit_columns_on_grid_load=True,
+        height=550,
+        server_sync_strategy="server_wins",
+        key=grid_key
+    )
+
+
+def render_excel_download(df_excel, sheet_name, file_name, button_label):
+    """
+    Render nút download Excel chuẩn hóa cho mọi báo cáo.
+    Loại bỏ trùng lặp boilerplate giữa render_report_1, _2, _3.
+
+    Args:
+        df_excel: DataFrame đã chuẩn bị cho xuất Excel.
+        sheet_name: Tên sheet trong file Excel.
+        file_name: Tên file Excel khi download.
+        button_label: Nhãn nút download.
+    """
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df_excel.round(2).to_excel(writer, sheet_name=sheet_name, index=False)
+
+    st.download_button(
+        label=button_label,
+        data=buffer.getvalue(),
+        file_name=file_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+def assign_dot_manual_to_first_row(df, dot_manual_df, columns, type_map=None):
+    """
+    Phân bổ giá trị nhập tay theo đợt vào dòng đầu tiên của mỗi đợt trong DataFrame chính.
+    Loại bỏ trùng lặp logic giữa render_report_1 và render_report_2.
+
+    Args:
+        df: DataFrame chính (sẽ bị thay đổi inplace).
+        dot_manual_df: DataFrame manual inputs theo đợt (có cột ĐỢT HỌC THỬ).
+        columns: list tên cột cần gán.
+        type_map: dict {col_name: callable} để ép kiểu. Mặc định: int.
+                  Ví dụ: {'Data trùng bình quân ...': lambda v: round(float(v), 2)}
+
+    Returns:
+        df: DataFrame đã được gán giá trị.
+    """
+    if type_map is None:
+        type_map = {}
+    default_values = {}
+    for col in columns:
+        cast_fn = type_map.get(col, int)
+        # Xác định giá trị mặc định dựa trên kiểu
+        default_values[col] = 0.0 if cast_fn in (float, lambda v: round(float(v), 2)) else 0
+        df[col] = default_values[col]
+
+    for _, row in dot_manual_df.iterrows():
+        dot_mask = df[DOT_COLUMN] == row[DOT_COLUMN]
+        if dot_mask.any():
+            first_idx = df[dot_mask].index[0]
+            for col in columns:
+                cast_fn = type_map.get(col, int)
+                df.at[first_idx, col] = cast_fn(row[col])
+
+    return df

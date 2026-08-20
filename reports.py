@@ -3,6 +3,7 @@ reports.py — Module hiển thị báo cáo
 Chứa các hàm:
 - render_report_1: Hiển thị Báo cáo 1
 - render_report_2: Hiển thị Báo cáo 2
+- render_report_3: Hiển thị Báo cáo 3
 
 Re-export các hàm từ report_calculations để tương thích ngược với app.py:
 - add_indicator_columns
@@ -12,8 +13,6 @@ Re-export các hàm từ report_calculations để tương thích ngược với
 
 import streamlit as st
 import pandas as pd
-import io
-from st_aggrid import AgGrid
 from st_aggrid.grid_options_builder import GridOptionsBuilder
 
 # Import các phần từ các module con
@@ -25,7 +24,10 @@ from report_utils import (
 from report_components import (
     render_dot_manual_inputs,
     render_dot_nguon_manual_inputs,
-    render_dot_nguon_matrix_inputs
+    render_dot_nguon_matrix_inputs,
+    render_aggrid_report,
+    render_excel_download,
+    assign_dot_manual_to_first_row
 )
 from report_calculations import (
     add_indicator_columns, 
@@ -76,14 +78,10 @@ def render_report_1(result):
     )
     
     # Phân bổ giá trị nhập tay vào dòng đầu tiên mỗi đợt (để aggFunc sum hoạt động đúng ở group footer)
-    df_to_show['Cọc Khác'] = 0
-    df_to_show['Tổng Cọc Học Thử'] = 0
-    for _, row in dot_manual_df.iterrows():
-        dot_mask = df_to_show['ĐỢT HỌC THỬ'] == row['ĐỢT HỌC THỬ']
-        if dot_mask.any():
-            first_idx = df_to_show[dot_mask].index[0]
-            df_to_show.at[first_idx, 'Cọc Khác'] = int(row['Cọc Khác'])
-            df_to_show.at[first_idx, 'Tổng Cọc Học Thử'] = int(row['Tổng Cọc Học Thử'])
+    df_to_show = assign_dot_manual_to_first_row(
+        df_to_show, dot_manual_df,
+        ['Cọc Khác', 'Tổng Cọc Học Thử']
+    )
     st.session_state[state_key] = df_to_show
     
     # ====== XÂY DỰNG GRIDOPTIONS CHO AGGRID ======
@@ -103,13 +101,8 @@ def render_report_1(result):
     ]
     configure_standard_grid_columns(gb, count_cols)
 
-    grid_options = gb.build()
-    grid_options["groupIncludeFooter"] = True
-    grid_options["groupIncludeTotalFooter"] = True
-    grid_options["groupDefaultExpanded"] = -1
-    grid_options["suppressAggFuncInHeader"] = True
-
     # Dòng tổng cố định ở đầu bảng — tổng từ bảng nhập tay theo đợt
+    pinned_row = None
     if not df_to_show.empty:
         total_sai_so = int(df_to_show['Sai Số - Sai Đối Tượng'].sum())
         total_data = int(df_to_show['Tổng số Data'].sum())
@@ -129,19 +122,9 @@ def render_report_1(result):
             'Cọc Khác': total_coc_khac,
             'Tổng Cọc Học Thử': total_tong_coc,
         }
-        grid_options["pinnedTopRowData"] = [pinned_row]
 
     # Hiển thị AgGrid
-    AgGrid(
-        df_to_show,
-        gridOptions=grid_options,
-        enable_enterprise_modules=True,
-        allow_unsafe_jscode=True,
-        fit_columns_on_grid_load=True,
-        height=550,
-        server_sync_strategy="server_wins",
-        key=f"grid_report_1_v3_{manual_hash}"
-    )
+    render_aggrid_report(df_to_show, gb, pinned_row, f"grid_report_1_v3_{manual_hash}")
 
 def render_report_2(result_2):
     """Hiển thị Báo cáo 2: Theo Đợt học thử & Nguồn khách hàng."""
@@ -205,17 +188,12 @@ def render_report_2(result_2):
         )
 
     # Cập nhật Data vào nhóm Zalo, Data order, Data trùng bình quân vào dòng đầu tiên của mỗi đợt
-    df_to_show['Data vào nhóm Zalo'] = 0
-    df_to_show['Data order'] = 0
-    df_to_show['Data trùng bình quân 1 ngày trên 1 cố vấn'] = 0.0
-
-    for _, row in dot_manual_df.iterrows():
-        dot_mask = df_to_show['ĐỢT HỌC THỬ'] == row['ĐỢT HỌC THỬ']
-        if dot_mask.any():
-            first_idx = df_to_show[dot_mask].index[0]
-            df_to_show.at[first_idx, 'Data vào nhóm Zalo'] = int(row['Data vào nhóm Zalo'])
-            df_to_show.at[first_idx, 'Data order'] = int(row['Data order'])
-            df_to_show.at[first_idx, 'Data trùng bình quân 1 ngày trên 1 cố vấn'] = round(float(row['Data trùng bình quân 1 ngày trên 1 cố vấn']), 2)
+    r2_float_cast = lambda v: round(float(v), 2)
+    df_to_show = assign_dot_manual_to_first_row(
+        df_to_show, dot_manual_df,
+        ['Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn'],
+        type_map={'Data trùng bình quân 1 ngày trên 1 cố vấn': r2_float_cast}
+    )
 
     df_to_show['Tổng data cần liên hệ'] = (df_to_show['Tổng data chạy được'] + df_to_show['Data trùng']).round(2)
     df_to_show['Tỷ lệ data thực tế/data order'] = 0.0
@@ -241,13 +219,8 @@ def render_report_2(result_2):
     # Cấu hình các cột cho báo cáo 2
     configure_report2_grid_columns(gb)
 
-    grid_options = gb.build()
-    grid_options["groupIncludeFooter"] = True
-    grid_options["groupIncludeTotalFooter"] = True
-    grid_options["groupDefaultExpanded"] = -1
-    grid_options["suppressAggFuncInHeader"] = True
-
     # Dòng tổng cố định ở đầu bảng (pinned top row)
+    pinned_row = None
     if not df_to_show.empty:
         time_val = df_to_show['Thời gian xuất data'].iloc[0] if len(df_to_show) > 0 else ''
         total_zalo = int(dot_manual_df['Data vào nhóm Zalo'].sum()) if not dot_manual_df.empty else 0
@@ -265,32 +238,17 @@ def render_report_2(result_2):
                 'Data trùng bình quân 1 ngày trên 1 cố vấn': total_trung_bq
             }
         )
-        grid_options["pinnedTopRowData"] = [pinned_row]
 
     # Hiển thị AgGrid
-    AgGrid(
-        df_to_show,
-        gridOptions=grid_options,
-        enable_enterprise_modules=True,
-        allow_unsafe_jscode=True,
-        fit_columns_on_grid_load=True,
-        height=550,
-        server_sync_strategy="server_wins",
-        key=f"grid_report_2_v3_{manual_hash}"
-    )
+    render_aggrid_report(df_to_show, gb, pinned_row, f"grid_report_2_v3_{manual_hash}")
 
     # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
     df_excel = prepare_excel_report_2(st.session_state[state_key], dot_manual_df)
-
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df_excel.round(2).to_excel(writer, sheet_name='BC_Nguon_Khach_Hang', index=False)
-
-    st.download_button(
-        label="📥 Tải xuống Báo cáo 2 (Excel)",
-        data=buffer.getvalue(),
-        file_name="Bao_cao_Nguon_Khach_Hang.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    render_excel_download(
+        df_excel,
+        sheet_name='BC_Nguon_Khach_Hang',
+        file_name='Bao_cao_Nguon_Khach_Hang.xlsx',
+        button_label='📥 Tải xuống Báo cáo 2 (Excel)'
     )
 
 
@@ -316,40 +274,20 @@ def render_report_3(result_3):
     # Cấu hình các cột nhóm tuổi, tổng và nhóm gộp
     configure_report3_grid_columns(gb)
 
-    grid_options = gb.build()
-    grid_options["groupIncludeFooter"] = True
-    grid_options["groupIncludeTotalFooter"] = True
-    grid_options["groupDefaultExpanded"] = -1
-    grid_options["suppressAggFuncInHeader"] = True
-
     # Dòng tổng cố định ở đầu bảng (pinned top row)
+    pinned_row = None
     if not df_to_show.empty:
         time_val = df_to_show['Thời gian xuất data'].iloc[0] if len(df_to_show) > 0 else ''
         pinned_row = aggregate_report_3_rows(df_to_show, time_val, '', '📊 TỔNG CỘNG')
-        grid_options["pinnedTopRowData"] = [pinned_row]
 
     # Hiển thị AgGrid (đồng nhất giao diện & font chữ với Báo cáo 1 và 2)
-    AgGrid(
-        df_to_show,
-        gridOptions=grid_options,
-        enable_enterprise_modules=True,
-        allow_unsafe_jscode=True,
-        fit_columns_on_grid_load=True,
-        height=550,
-        server_sync_strategy="server_wins",
-        key="grid_report_3_v1"
-    )
+    render_aggrid_report(df_to_show, gb, pinned_row, "grid_report_3_v1")
 
     # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
     df_excel = prepare_excel_report_3(df_to_show)
-
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df_excel.round(2).to_excel(writer, sheet_name='BC_Nguon_Tuoi', index=False)
-
-    st.download_button(
-        label="📥 Tải xuống Báo cáo 3 (Excel)",
-        data=buffer.getvalue(),
-        file_name="Bao_cao_Nguon_Tuoi.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    render_excel_download(
+        df_excel,
+        sheet_name='BC_Nguon_Tuoi',
+        file_name='Bao_cao_Nguon_Tuoi.xlsx',
+        button_label='📥 Tải xuống Báo cáo 3 (Excel)'
     )
