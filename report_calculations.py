@@ -16,8 +16,13 @@ from report_utils import (
     TRAO_DOI_LABELS,
     CHUA_TRAO_DOI_AUTO_CALL_LABELS,
 )
-from data_processing import _classify_nguon
+from data_processing import expand_report_3_sources_with_weights
 from time_utils import format_fetch_time
+
+
+REPORT_2_ADVISOR_COLUMN = 'Số CVHT đi làm'
+REPORT_2_AVERAGE_COLUMN = 'Data trung bình/ngày/CVHT'
+
 
 def add_indicator_columns(df_filtered):
     """
@@ -72,7 +77,8 @@ def compute_report_1(df_filtered):
             Data_trao_doi_duoc=("Data_trao_doi_duoc", "sum"),
             Data_tiem_nang=("Data_tiem_nang", "sum"),
             Data_coc_chot=("Data_coc_chot", "sum"),
-            Count=("Mã KH", "count"),
+            # "Tổng số Data" là số bản ghi, không phụ thuộc Mã KH có hay không.
+            Count=("SAI SỐ - SAI ĐỐI TƯỢNG", "size"),
         )
         .reset_index()
     )
@@ -125,15 +131,20 @@ def compute_report_1(df_filtered):
     return result
 
 
-def expand_weighted_sources(df_filtered, extra_columns=None):
+def expand_weighted_sources(
+    df_filtered,
+    extra_columns=None,
+    source_weights_column="_sources_with_weights",
+):
     """
     Mở rộng _sources_with_weights thành từng dòng riêng biệt theo trọng số.
     Dùng chung cho Báo cáo 2 và Báo cáo 3 để tránh lặp logic.
 
     Args:
-        df_filtered: DataFrame đã lọc, chứa cột _sources_with_weights.
+        df_filtered: DataFrame đã lọc, chứa cột trọng số nguồn.
         extra_columns: Dict {tên_cột_nguồn: giá_trị_mặc_định} cho các cột bổ sung
                        (ví dụ {"Nhóm tuổi": "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"}).
+        source_weights_column: Tên cột chứa danh sách (nguồn, trọng số).
 
     Returns:
         pd.DataFrame với các cột: ĐỢT HỌC THỬ, Nguồn, Weight, + extra_columns.
@@ -141,7 +152,7 @@ def expand_weighted_sources(df_filtered, extra_columns=None):
     extra_columns = extra_columns or {}
     rows = []
     for _, row in df_filtered.iterrows():
-        sources_weights = row.get("_sources_with_weights")
+        sources_weights = row.get(source_weights_column)
         if not isinstance(sources_weights, list):
             sources_weights = [("Khác", 1.0)]
 
@@ -177,7 +188,7 @@ def compute_report_2(df_filtered):
     cols_order = [
         'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn',
         'Tổng data chạy được', 'Data trùng', 'Tổng data cần liên hệ',
-        'Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn',
+        'Data vào nhóm Zalo', 'Data order', REPORT_2_AVERAGE_COLUMN,
         'Tỷ lệ data thực tế/data order'
     ]
 
@@ -205,13 +216,10 @@ def compute_report_2(df_filtered):
     result_2['Tổng data cần liên hệ'] = result_2['Tổng data chạy được']
     result_2['Data vào nhóm Zalo'] = 0
     result_2['Data order'] = 0
-    result_2['Data trùng bình quân 1 ngày trên 1 cố vấn'] = 0.0
+    result_2[REPORT_2_AVERAGE_COLUMN] = 0.0
     result_2['Tỷ lệ data thực tế/data order'] = 0.0
 
     result_2 = result_2[cols_order]
-
-    result_2['Tổng data chạy được'] = result_2['Tổng data chạy được'].round(2)
-    result_2['Tổng data cần liên hệ'] = result_2['Tổng data cần liên hệ'].round(2)
 
     return result_2
 
@@ -225,17 +233,25 @@ def compute_excel_percentages(df_excel):
     Tính toán tỷ lệ phần trăm động trên DataFrame phục vụ xuất Excel.
     Tái sử dụng chung để tránh lặp logic toán học.
     """
-    tot = df_excel['Tổng số Data']
-    base = df_excel['Tổng số data trừ sai số']
-    df_excel['% sai số-sai đối tượng/ Tổng data đã chia'] = (df_excel['Sai Số - Sai Đối Tượng'] / tot * 100).fillna(0)
-    df_excel['% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Tiềm Năng Chưa Gọi'] / base * 100).fillna(0)
-    df_excel['% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Data Chưa Trao Đổi + Auto Call'] / base * 100).fillna(0)
-    df_excel['% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Data Trao Đổi Được'] / base * 100).fillna(0)
-    df_excel['% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Data Tiềm Năng'] / base * 100).fillna(0)
-    df_excel['% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng'] = (df_excel['Data Cọc Chốt'] / base * 100).fillna(0)
-    
-    tong_coc = pd.to_numeric(df_excel.get('Tổng Cọc Học Thử', 0), errors='coerce').fillna(0)
-    df_excel['% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng'] = (tong_coc / base * 100).fillna(0)
+    tot = pd.to_numeric(df_excel['Tổng số Data'], errors='coerce')
+    base = pd.to_numeric(df_excel['Tổng số data trừ sai số'], errors='coerce')
+
+    def safe_percentage(numerator, denominator):
+        """Chỉ tính phần trăm khi mẫu số dương; tránh NaN và +/-inf."""
+        numerator = pd.to_numeric(numerator, errors='coerce')
+        valid_denominator = denominator.where(denominator > 0)
+        return (numerator / valid_denominator * 100).fillna(0.0)
+
+    df_excel['% sai số-sai đối tượng/ Tổng data đã chia'] = safe_percentage(df_excel['Sai Số - Sai Đối Tượng'], tot)
+    df_excel['% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng'] = safe_percentage(df_excel['Tiềm Năng Chưa Gọi'], base)
+    df_excel['% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng'] = safe_percentage(df_excel['Data Chưa Trao Đổi + Auto Call'], base)
+    df_excel['% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng'] = safe_percentage(df_excel['Data Trao Đổi Được'], base)
+    df_excel['% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng'] = safe_percentage(df_excel['Data Tiềm Năng'], base)
+    df_excel['% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng'] = safe_percentage(df_excel['Data Cọc Chốt'], base)
+
+    default_tong_coc = pd.Series(0, index=df_excel.index, dtype=float)
+    tong_coc = pd.to_numeric(df_excel.get('Tổng Cọc Học Thử', default_tong_coc), errors='coerce').fillna(0)
+    df_excel['% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng'] = safe_percentage(tong_coc, base)
     return df_excel
 
 
@@ -353,7 +369,52 @@ def prepare_excel_report_1(df_edited, dot_manual_df=None):
     )
 
 
-def aggregate_report_2_rows(df_rows, time_val, dot_val, nguon_val, dot_manual_values=None):
+def calculate_report_2_average_metrics(df_rows, dot_manual_df=None):
+    """
+    Tính Data trung bình/ngày/CVHT theo từng đợt và trung bình các đợt hợp lệ.
+
+    Đợt có Số CVHT đi làm <= 0 nhận giá trị 0 và không tham gia grand average.
+    """
+    if df_rows is None or df_rows.empty:
+        return {}, 0.0
+
+    advisor_by_dot = {}
+    if dot_manual_df is not None and not dot_manual_df.empty:
+        for _, row in dot_manual_df.iterrows():
+            dot_name = str(row.get('ĐỢT HỌC THỬ', ''))
+            advisor_count = pd.to_numeric(row.get(REPORT_2_ADVISOR_COLUMN, 0), errors='coerce')
+            advisor_by_dot[dot_name] = int(advisor_count) if pd.notna(advisor_count) and advisor_count > 0 else 0
+
+    data_by_dot = (
+        df_rows.assign(
+            _dot_key=df_rows['ĐỢT HỌC THỬ'].astype(str),
+            _total_data=pd.to_numeric(df_rows['Tổng data chạy được'], errors='coerce').fillna(0.0),
+        )
+        .groupby('_dot_key', sort=False)['_total_data']
+        .sum()
+    )
+
+    averages_by_dot = {}
+    valid_averages = []
+    for dot_name, total_data in data_by_dot.items():
+        advisor_count = advisor_by_dot.get(dot_name, 0)
+        average_value = float(total_data) / advisor_count if advisor_count > 0 else 0.0
+        averages_by_dot[dot_name] = average_value
+        if advisor_count > 0:
+            valid_averages.append(average_value)
+
+    grand_average = sum(valid_averages) / len(valid_averages) if valid_averages else 0.0
+    return averages_by_dot, grand_average
+
+
+def aggregate_report_2_rows(
+    df_rows,
+    time_val,
+    dot_val,
+    nguon_val,
+    dot_manual_values=None,
+    data_average_value=None,
+):
     """Tính tổng các cột cho Báo cáo 2 từ một DataFrame con và trả về 1 dict đại diện cho dòng tổng."""
     tot_data = round(float(df_rows['Tổng data chạy được'].sum()), 2)
     tot_trung = int(df_rows['Data trùng'].sum()) if 'Data trùng' in df_rows else 0
@@ -362,11 +423,15 @@ def aggregate_report_2_rows(df_rows, time_val, dot_val, nguon_val, dot_manual_va
     if dot_manual_values:
         tot_zalo = int(dot_manual_values.get('Data vào nhóm Zalo', 0))
         tot_order = int(dot_manual_values.get('Data order', 0))
-        tot_trung_bq = round(float(dot_manual_values.get('Data trùng bình quân 1 ngày trên 1 cố vấn', 0.0)), 2)
     else:
         tot_zalo = int(df_rows['Data vào nhóm Zalo'].sum()) if 'Data vào nhóm Zalo' in df_rows else 0
         tot_order = int(df_rows['Data order'].sum()) if 'Data order' in df_rows else 0
-        tot_trung_bq = round(float(df_rows['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum()), 2) if 'Data trùng bình quân 1 ngày trên 1 cố vấn' in df_rows else 0.0
+
+    if data_average_value is None:
+        data_average_value = (
+            float(pd.to_numeric(df_rows[REPORT_2_AVERAGE_COLUMN], errors='coerce').fillna(0.0).sum())
+            if REPORT_2_AVERAGE_COLUMN in df_rows else 0.0
+        )
 
     return {
         'Thời gian xuất data': time_val,
@@ -377,7 +442,7 @@ def aggregate_report_2_rows(df_rows, time_val, dot_val, nguon_val, dot_manual_va
         'Tổng data cần liên hệ': tot_lien_he,
         'Data vào nhóm Zalo': tot_zalo,
         'Data order': tot_order,
-        'Data trùng bình quân 1 ngày trên 1 cố vấn': tot_trung_bq,
+        REPORT_2_AVERAGE_COLUMN: float(data_average_value),
         'Tỷ lệ data thực tế/data order': round(tot_data / tot_order * 100, 2) if tot_order else 0.0,
     }
 
@@ -391,7 +456,7 @@ def _get_dot_manual_values(dot_manual_df, dot_name):
     return {
         'Data vào nhóm Zalo': int(m_row['Data vào nhóm Zalo'].iloc[0]),
         'Data order': int(m_row['Data order'].iloc[0]),
-        'Data trùng bình quân 1 ngày trên 1 cố vấn': round(float(m_row['Data trùng bình quân 1 ngày trên 1 cố vấn'].iloc[0]), 2)
+        REPORT_2_ADVISOR_COLUMN: int(m_row[REPORT_2_ADVISOR_COLUMN].iloc[0]),
     }
 
 
@@ -399,17 +464,27 @@ def _aggregate_report_2_row_factory(dot_manual_df=None):
     """Trả về aggregate_fn cho Report 2 (closure chứa dot_manual_df)."""
     def aggregate_fn(group, time_val, dot_label, nguon_label):
         real_dot = dot_label.replace('TỔNG ', '') if dot_label.startswith('TỔNG ') else None
+        averages_by_dot, grand_average = calculate_report_2_average_metrics(group, dot_manual_df)
         if dot_label == 'TỔNG CỘNG':
             dot_vals = {
                 'Data vào nhóm Zalo': int(dot_manual_df['Data vào nhóm Zalo'].sum()) if dot_manual_df is not None and not dot_manual_df.empty else 0,
                 'Data order': int(dot_manual_df['Data order'].sum()) if dot_manual_df is not None and not dot_manual_df.empty else 0,
-                'Data trùng bình quân 1 ngày trên 1 cố vấn': round(float(dot_manual_df['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum()), 2) if dot_manual_df is not None and not dot_manual_df.empty else 0.0
             }
+            data_average_value = grand_average
         elif real_dot:
             dot_vals = _get_dot_manual_values(dot_manual_df, real_dot)
+            data_average_value = averages_by_dot.get(str(real_dot), 0.0)
         else:
             dot_vals = None
-        return aggregate_report_2_rows(group, time_val, dot_label, nguon_label, dot_manual_values=dot_vals)
+            data_average_value = 0.0
+        return aggregate_report_2_rows(
+            group,
+            time_val,
+            dot_label,
+            nguon_label,
+            dot_manual_values=dot_vals,
+            data_average_value=data_average_value,
+        )
     return aggregate_fn
 
 
@@ -418,7 +493,7 @@ def _hide_dot_level_cols_r2(group):
     display = group.copy()
     display['Data vào nhóm Zalo'] = None
     display['Data order'] = None
-    display['Data trùng bình quân 1 ngày trên 1 cố vấn'] = None
+    display[REPORT_2_AVERAGE_COLUMN] = None
     display['Tỷ lệ data thực tế/data order'] = None
     return display
 
@@ -466,9 +541,22 @@ def compute_report_3(df_filtered):
     
     fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
 
+    # Dữ liệu đang có trong session từ trước khi nâng cấp có thể chưa có cột này.
+    report_3_source_column = "_report_3_sources_with_weights"
+    df_report_3 = df_filtered.copy()
+    if report_3_source_column not in df_report_3.columns:
+        source_details = df_report_3.get(
+            "account_source_details",
+            pd.Series(index=df_report_3.index, dtype=object),
+        )
+        df_report_3[report_3_source_column] = source_details.apply(
+            expand_report_3_sources_with_weights
+        )
+
     expanded_df = expand_weighted_sources(
-        df_filtered,
-        extra_columns={"Nhóm tuổi": "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"}
+        df_report_3,
+        extra_columns={"Nhóm tuổi": "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"},
+        source_weights_column=report_3_source_column,
     )
     if expanded_df.empty:
         return pd.DataFrame(columns=cols_order)
@@ -503,10 +591,6 @@ def compute_report_3(df_filtered):
     result_df.insert(0, 'Thời gian xuất data', fetch_time)
     
     result_df = result_df[cols_order]
-    
-    # Round all numeric columns to 2 decimals
-    numeric_cols = result_df.select_dtypes(include=['number']).columns
-    result_df[numeric_cols] = result_df[numeric_cols].round(2)
     
     return result_df
 

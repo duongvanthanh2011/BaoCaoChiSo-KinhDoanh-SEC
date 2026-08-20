@@ -293,7 +293,7 @@ function(params) {
 }
 """)
 
-formatter_r2_data_trung_bq = JsCode("""
+formatter_r2_data_average = JsCode("""
 function(params) {
     if (params.node && (params.node.rowPinned || params.node.group || params.node.footer)) {
         var val = params.value;
@@ -612,9 +612,9 @@ def configure_report2_grid_columns(gb, count_cols=None):
     )
 
     gb.configure_column(
-        "Data trùng bình quân 1 ngày trên 1 cố vấn",
+        "Data trung bình/ngày/CVHT",
         aggFunc="sum",
-        valueFormatter=formatter_r2_data_trung_bq,
+        valueFormatter=formatter_r2_data_average,
         width=160
     )
 

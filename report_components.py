@@ -4,6 +4,7 @@ report_components.py - Component UI dung chung cho cac bao cao.
 
 import hashlib
 import io
+from contextlib import contextmanager
 
 import pandas as pd
 import streamlit as st
@@ -12,6 +13,14 @@ from st_aggrid.grid_options_builder import GridOptionsBuilder
 
 
 DOT_COLUMN = 'ĐỢT HỌC THỬ'
+
+
+@contextmanager
+def manual_input_expander(title, column_spec=None, expanded=True):
+    """Tạo khối nhập liệu có thể đóng/mở và tùy chọn bố cục cột."""
+    with st.expander(title, expanded=expanded):
+        columns = st.columns(column_spec) if column_spec is not None else None
+        yield columns
 
 
 def normalize_dot_manual_df(dot_manual_df, unique_dots, number_columns, float_columns=None):
@@ -340,7 +349,13 @@ def render_excel_download(df_excel, sheet_name, file_name, button_label):
     """
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df_excel.round(2).to_excel(writer, sheet_name=sheet_name, index=False)
+        # Giữ giá trị thật trong file để SUM không sai do làm tròn; chỉ định dạng hiển thị 2 số lẻ.
+        df_excel.to_excel(writer, sheet_name=sheet_name, index=False)
+        worksheet = writer.sheets[sheet_name]
+        for row in worksheet.iter_rows(min_row=2):
+            for cell in row:
+                if isinstance(cell.value, float):
+                    cell.number_format = '0.00'
 
     st.download_button(
         label=button_label,
@@ -360,7 +375,7 @@ def assign_dot_manual_to_first_row(df, dot_manual_df, columns, type_map=None):
         dot_manual_df: DataFrame manual inputs theo đợt (có cột ĐỢT HỌC THỬ).
         columns: list tên cột cần gán.
         type_map: dict {col_name: callable} để ép kiểu. Mặc định: int.
-                  Ví dụ: {'Data trùng bình quân ...': lambda v: round(float(v), 2)}
+                  Ví dụ: {'Data trùng bình quân ...': float}
 
     Returns:
         df: DataFrame đã được gán giá trị.
@@ -371,7 +386,7 @@ def assign_dot_manual_to_first_row(df, dot_manual_df, columns, type_map=None):
     for col in columns:
         cast_fn = type_map.get(col, int)
         # Xác định giá trị mặc định dựa trên kiểu
-        default_values[col] = 0.0 if cast_fn in (float, lambda v: round(float(v), 2)) else 0
+        default_values[col] = 0.0 if cast_fn is float else 0
         df[col] = default_values[col]
 
     for _, row in dot_manual_df.iterrows():

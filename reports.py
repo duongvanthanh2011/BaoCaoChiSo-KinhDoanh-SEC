@@ -22,6 +22,7 @@ from report_utils import (
     configure_report3_grid_columns
 )
 from report_components import (
+    manual_input_expander,
     render_dot_manual_inputs,
     render_dot_nguon_manual_inputs,
     render_dot_nguon_matrix_inputs,
@@ -38,7 +39,10 @@ from report_calculations import (
     prepare_excel_report_2,
     prepare_excel_report_3,
     aggregate_report_2_rows,
-    aggregate_report_3_rows
+    aggregate_report_3_rows,
+    calculate_report_2_average_metrics,
+    REPORT_2_ADVISOR_COLUMN,
+    REPORT_2_AVERAGE_COLUMN,
 )
 
 # Re-export để app.py import trực tiếp không bị lỗi
@@ -66,16 +70,19 @@ def render_report_1(result):
     # ====== BẢNG NHẬP TAY CỌC KHÁC & TỔNG CỌC HỌC THỬ THEO ĐỢT ======
     unique_dots = sorted(df_to_show['ĐỢT HỌC THỬ'].unique().tolist())
     
-    dot_manual_df, manual_hash = render_dot_manual_inputs(
-        "✏️ Nhập Cọc Khác & Tổng Cọc Học Thử theo Đợt học thử",
-        dot_manual_key,
-        unique_dots,
-        ['Cọc Khác', 'Tổng Cọc Học Thử'],
-        {
-            'Cọc Khác': 'report_1_coc_khac',
-            'Tổng Cọc Học Thử': 'report_1_tong_coc_ht',
-        },
-    )
+    with manual_input_expander(
+        "✏️ Bảng nhập số liệu thực tế (Cọc khác, Tổng cọc học thử)"
+    ):
+        dot_manual_df, manual_hash = render_dot_manual_inputs(
+            "Số liệu chung theo đợt",
+            dot_manual_key,
+            unique_dots,
+            ['Cọc Khác', 'Tổng Cọc Học Thử'],
+            {
+                'Cọc Khác': 'report_1_coc_khac',
+                'Tổng Cọc Học Thử': 'report_1_tong_coc_ht',
+            },
+        )
     
     # Phân bổ giá trị nhập tay vào dòng đầu tiên mỗi đợt (để aggFunc sum hoạt động đúng ở group footer)
     df_to_show = assign_dot_manual_to_first_row(
@@ -126,6 +133,15 @@ def render_report_1(result):
     # Hiển thị AgGrid
     render_aggrid_report(df_to_show, gb, pinned_row, f"grid_report_1_v3_{manual_hash}")
 
+    # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
+    df_excel = prepare_excel_report_1(st.session_state[state_key], dot_manual_df)
+    render_excel_download(
+        df_excel,
+        sheet_name='BC_Dot_Nguoi_Phu_Trach',
+        file_name='Bao_cao_Dot_Nguoi_Phu_Trach.xlsx',
+        button_label='📥 Tải xuống Báo cáo 1 (Excel)'
+    )
+
 def render_report_2(result_2):
     """Hiển thị Báo cáo 2: Theo Đợt học thử & Nguồn khách hàng."""
     st.subheader("Bản xem trước: Báo cáo theo Đợt học thử & Nguồn khách hàng")
@@ -144,8 +160,11 @@ def render_report_2(result_2):
     if not unique_nguons:
         unique_nguons = preferred_order
 
-    with st.expander("✏️ Bảng nhập số liệu thực tế (Data trùng, Zalo, Order, BQ)", expanded=True):
-        col_input_1, col_input_2 = st.columns(2)
+    with manual_input_expander(
+        "✏️ Bảng nhập số liệu thực tế (Data trùng, Zalo, Order, Số CVHT)",
+        column_spec=2,
+    ) as input_columns:
+        col_input_1, col_input_2 = input_columns
 
         with col_input_1:
             dot_nguon_manual_df, hash_nguon = render_dot_nguon_matrix_inputs(
@@ -157,7 +176,7 @@ def render_report_2(result_2):
             )
 
         with col_input_2:
-            dot_manual_cols = ['Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn']
+            dot_manual_cols = ['Data vào nhóm Zalo', 'Data order', REPORT_2_ADVISOR_COLUMN]
             dot_manual_df, hash_dot = render_dot_manual_inputs(
                 "Số liệu chung theo đợt",
                 dot_manual_key,
@@ -166,13 +185,12 @@ def render_report_2(result_2):
                 {
                     'Data vào nhóm Zalo': 'r2_data_zalo',
                     'Data order': 'r2_data_order',
-                    'Data trùng bình quân 1 ngày trên 1 cố vấn': 'r2_data_trung_bq',
+                    REPORT_2_ADVISOR_COLUMN: 'r2_so_cvht_di_lam',
                 },
-                float_columns=['Data trùng bình quân 1 ngày trên 1 cố vấn'],
                 display_labels={
                     'Data vào nhóm Zalo': 'Vào nhóm Zalo',
                     'Data order': 'Data order',
-                    'Data trùng bình quân 1 ngày trên 1 cố vấn': 'Trùng BQ/ngày'
+                    REPORT_2_ADVISOR_COLUMN: REPORT_2_ADVISOR_COLUMN,
                 }
             )
 
@@ -187,22 +205,36 @@ def render_report_2(result_2):
             axis=1
         )
 
-    # Cập nhật Data vào nhóm Zalo, Data order, Data trùng bình quân vào dòng đầu tiên của mỗi đợt
-    r2_float_cast = lambda v: round(float(v), 2)
+    # Cập nhật các số liệu nhập tay cần tính tổng vào dòng đầu tiên của mỗi đợt.
     df_to_show = assign_dot_manual_to_first_row(
         df_to_show, dot_manual_df,
-        ['Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn'],
-        type_map={'Data trùng bình quân 1 ngày trên 1 cố vấn': r2_float_cast}
+        ['Data vào nhóm Zalo', 'Data order'],
     )
 
-    df_to_show['Tổng data cần liên hệ'] = (df_to_show['Tổng data chạy được'] + df_to_show['Data trùng']).round(2)
+    # Chỉ số theo đợt = tổng data của mọi nguồn / số CVHT đi làm.
+    averages_by_dot, grand_average = calculate_report_2_average_metrics(df_to_show, dot_manual_df)
+    average_manual_df = pd.DataFrame(
+        [
+            {'ĐỢT HỌC THỬ': dot_name, REPORT_2_AVERAGE_COLUMN: average_value}
+            for dot_name, average_value in averages_by_dot.items()
+        ],
+        columns=['ĐỢT HỌC THỬ', REPORT_2_AVERAGE_COLUMN],
+    )
+    df_to_show = assign_dot_manual_to_first_row(
+        df_to_show,
+        average_manual_df,
+        [REPORT_2_AVERAGE_COLUMN],
+        type_map={REPORT_2_AVERAGE_COLUMN: float},
+    )
+
+    df_to_show['Tổng data cần liên hệ'] = df_to_show['Tổng data chạy được'] + df_to_show['Data trùng']
     df_to_show['Tỷ lệ data thực tế/data order'] = 0.0
 
     # Đảm bảo thứ tự cột chuẩn xác: Thời gian xuất data -> ĐỢT HỌC THỬ -> Nguồn -> ...
     cols_order = [
         'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn',
         'Tổng data chạy được', 'Data trùng', 'Tổng data cần liên hệ',
-        'Data vào nhóm Zalo', 'Data order', 'Data trùng bình quân 1 ngày trên 1 cố vấn',
+        'Data vào nhóm Zalo', 'Data order', REPORT_2_AVERAGE_COLUMN,
         'Tỷ lệ data thực tế/data order'
     ]
     df_to_show = df_to_show[cols_order]
@@ -225,8 +257,6 @@ def render_report_2(result_2):
         time_val = df_to_show['Thời gian xuất data'].iloc[0] if len(df_to_show) > 0 else ''
         total_zalo = int(dot_manual_df['Data vào nhóm Zalo'].sum()) if not dot_manual_df.empty else 0
         total_order = int(dot_manual_df['Data order'].sum()) if not dot_manual_df.empty else 0
-        total_trung_bq = round(float(dot_manual_df['Data trùng bình quân 1 ngày trên 1 cố vấn'].sum()), 2) if not dot_manual_df.empty else 0.0
-
         pinned_row = aggregate_report_2_rows(
             df_to_show,
             time_val,
@@ -235,8 +265,8 @@ def render_report_2(result_2):
             dot_manual_values={
                 'Data vào nhóm Zalo': total_zalo,
                 'Data order': total_order,
-                'Data trùng bình quân 1 ngày trên 1 cố vấn': total_trung_bq
-            }
+            },
+            data_average_value=grand_average,
         )
 
     # Hiển thị AgGrid

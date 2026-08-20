@@ -309,9 +309,47 @@ def classify_source_with_priority(label):
     
     return "Khác"
 
+
+def classify_report_3_source(label):
+    """Phân loại nguồn riêng cho Báo cáo 3 theo thứ tự ưu tiên nghiệp vụ."""
+    if not isinstance(label, str):
+        return "Khác"
+
+    label_lower = label.lower()
+
+    # Giữ nguyên ưu tiên cao nhất của nhóm Khác như logic cũ.
+    if "staff" in label_lower or "org" in label_lower:
+        return "Khác"
+
+    # GG ưu tiên hơn các từ khóa địa điểm.
+    if "gg" in label_lower:
+        return "Google Ads"
+
+    if "cầu giấy" in label_lower or "cau giay" in label_lower:
+        return "Ads Cầu Giấy"
+
+    if "trường chinh" in label_lower or "truong chinh" in label_lower:
+        return "Ads Trường Chinh"
+
+    return "Khác"
+
+
 # ==========================================
 # PHÂN BỔ TRỌNG SỐ CHO CÁC NGUỒN
 # ==========================================
+
+def _expand_sources_with_classifier(account_source_details, classifier):
+    """Chia đều trọng số của một khách hàng và phân loại từng nguồn."""
+    if not isinstance(account_source_details, list) or len(account_source_details) == 0:
+        return [("Khác", 1.0)]
+
+    weight = 1.0 / len(account_source_details)
+    result = []
+    for source_item in account_source_details:
+        label = source_item.get("label", "") if isinstance(source_item, dict) else ""
+        result.append((classifier(label), weight))
+    return result
+
 
 def expand_sources_with_weights(account_source_details):
     """
@@ -321,19 +359,12 @@ def expand_sources_with_weights(account_source_details):
     Returns:
         List of tuples: [(source_classified, weight), ...]
     """
-    if not isinstance(account_source_details, list) or len(account_source_details) == 0:
-        return [("Khác", 1.0)]
-    
-    n = len(account_source_details)
-    weight = 1.0 / n
-    result = []
-    
-    for source_item in account_source_details:
-        label = source_item.get("label", "")
-        classified = classify_source_with_priority(label)
-        result.append((classified, weight))
-    
-    return result
+    return _expand_sources_with_classifier(account_source_details, classify_source_with_priority)
+
+
+def expand_report_3_sources_with_weights(account_source_details):
+    """Mở rộng nguồn theo trọng số với bộ phân loại riêng của Báo cáo 3."""
+    return _expand_sources_with_classifier(account_source_details, classify_report_3_source)
 
 
 def transform_dataframe(df, src_ids, type_ids, account_types_list, users_list=None):
@@ -413,9 +444,16 @@ def transform_dataframe(df, src_ids, type_ids, account_types_list, users_list=No
         # Fallback nếu API không trả về description
         df["Nhóm tuổi"] = "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
     
-    # 7. Thêm cột nguồn với trọng số
-    df["_sources_with_weights"] = df.get("account_source_details", pd.Series(dtype=object)).apply(
+    # 7. Thêm cột nguồn với trọng số riêng cho Báo cáo 2 và 3.
+    source_details = df.get(
+        "account_source_details",
+        pd.Series(index=df.index, dtype=object),
+    )
+    df["_sources_with_weights"] = source_details.apply(
         expand_sources_with_weights
+    )
+    df["_report_3_sources_with_weights"] = source_details.apply(
+        expand_report_3_sources_with_weights
     )
 
     return df
