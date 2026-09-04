@@ -16,7 +16,15 @@ from report_utils import (
     TRAO_DOI_LABELS,
     CHUA_TRAO_DOI_AUTO_CALL_LABELS,
 )
-from data_processing import expand_report_3_sources_with_weights
+from data_processing import (
+    AGE_GROUPS,
+    REPORT_3_CONSOLIDATED_COLUMNS,
+    REPORT_3_SCHOOL_WORKER_COLUMN,
+    REPORT_3_STUDENT_YOUNG_COLUMN,
+    REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
+    classify_age_group,
+    expand_report_3_sources_with_weights,
+)
 from time_utils import format_fetch_time
 
 
@@ -143,7 +151,7 @@ def expand_weighted_sources(
     Args:
         df_filtered: DataFrame đã lọc, chứa cột trọng số nguồn.
         extra_columns: Dict {tên_cột_nguồn: giá_trị_mặc_định} cho các cột bổ sung
-                       (ví dụ {"Nhóm tuổi": "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"}).
+                       (ví dụ {"Nhóm tuổi": "Chưa điền"}).
         source_weights_column: Tên cột chứa danh sách (nguồn, trọng số).
 
     Returns:
@@ -524,16 +532,15 @@ def compute_report_3(df_filtered):
         - Thời gian xuất data
         - ĐỢT HỌC THỬ
         - Nguồn
-        - Các nhóm tuổi (8 cột)
+        - Các nhóm tuổi (7 cột)
         - TỔNG
-        - Nhóm tổng hợp: HS cấp 2+3, SV + DL <45, Khác (HS1+45-60+60+Chưa điền)
+        - Ba nhóm tổng hợp theo yêu cầu nghiệp vụ
     """
-    from data_processing import AGE_GROUPS
-
     cols_order = (
         ['Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn']
         + AGE_GROUPS
-        + ['TỔNG', 'HS cấp 2+3', 'SV + DL <45', 'Khác (HS1+45-60+60+Chưa điền)']
+        + ['TỔNG']
+        + REPORT_3_CONSOLIDATED_COLUMNS
     )
 
     if df_filtered.empty:
@@ -544,6 +551,18 @@ def compute_report_3(df_filtered):
     # Dữ liệu đang có trong session từ trước khi nâng cấp có thể chưa có cột này.
     report_3_source_column = "_report_3_sources_with_weights"
     df_report_3 = df_filtered.copy()
+
+    # Luôn phân loại lại từ description để session cũ không giữ nhóm tuổi cũ.
+    # Nếu không còn description, chuẩn hóa cột Nhóm tuổi hiện có theo schema mới.
+    if "description" in df_report_3.columns:
+        df_report_3["Nhóm tuổi"] = df_report_3["description"].apply(classify_age_group)
+    else:
+        age_values = df_report_3.get(
+            "Nhóm tuổi",
+            pd.Series(index=df_report_3.index, dtype=object),
+        )
+        df_report_3["Nhóm tuổi"] = age_values.apply(classify_age_group)
+
     if report_3_source_column not in df_report_3.columns:
         source_details = df_report_3.get(
             "account_source_details",
@@ -555,7 +574,7 @@ def compute_report_3(df_filtered):
 
     expanded_df = expand_weighted_sources(
         df_report_3,
-        extra_columns={"Nhóm tuổi": "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"},
+        extra_columns={"Nhóm tuổi": "Chưa điền"},
         source_weights_column=report_3_source_column,
     )
     if expanded_df.empty:
@@ -575,14 +594,19 @@ def compute_report_3(df_filtered):
     # Tính TỔNG theo hàng (tổng tất cả nhóm tuổi của nguồn đó trong đợt đó)
     pivot["TỔNG"] = pivot[AGE_GROUPS].sum(axis=1)
     
-    # Consolidated groups
-    pivot["HS cấp 2+3"] = pivot.get("Học sinh cấp 2", 0) + pivot.get("Học sinh cấp 3", 0)
-    pivot["SV + DL <45"] = pivot.get("Sinh viên", 0) + pivot.get("Người đi làm dưới 45 tuổi", 0)
-    pivot["Khác (HS1+45-60+60+Chưa điền)"] = (
-        pivot.get("Học sinh cấp 1", 0) +
-        pivot.get("Người đi làm từ 45 đến dưới 60 tuổi", 0) +
-        pivot.get("Người trên 60 tuổi", 0) +
-        pivot.get("SALE CHƯA ĐIỀN & ĐIỀN TRÙNG", 0)
+    # Các nhóm tổng hợp mới.
+    pivot[REPORT_3_STUDENT_YOUNG_COLUMN] = (
+        pivot.get("Sinh Viên", 0)
+        + pivot.get("Người đi làm dưới 35 Tuổi", 0)
+    )
+    pivot[REPORT_3_SCHOOL_WORKER_COLUMN] = (
+        pivot.get("Học sinh cấp 2", 0)
+        + pivot.get("Học sinh cấp 3", 0)
+        + pivot.get("Người đi làm từ 35 - 50 Tuổi", 0)
+    )
+    pivot[REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN] = (
+        pivot[REPORT_3_STUDENT_YOUNG_COLUMN]
+        + pivot.get("Chưa điền", 0)
     )
     
     # Reset index để đưa ĐỢT HỌC THỬ và Nguồn thành các cột bình thường
@@ -597,8 +621,6 @@ def compute_report_3(df_filtered):
 
 def aggregate_report_3_rows(df_rows, time_val, dot_val, nguon_val):
     """Tính tổng các cột cho Báo cáo 3 từ một DataFrame con và trả về 1 dict đại diện cho dòng tổng."""
-    from data_processing import AGE_GROUPS
-    
     row_dict = {
         'Thời gian xuất data': time_val,
         'ĐỢT HỌC THỬ': dot_val,
@@ -611,13 +633,8 @@ def aggregate_report_3_rows(df_rows, time_val, dot_val, nguon_val):
     tot = round(float(df_rows['TỔNG'].sum()), 2) if 'TỔNG' in df_rows else 0.0
     row_dict['TỔNG'] = tot
     
-    # Consolidated groups
-    row_dict['HS cấp 2+3'] = round(float(df_rows['HS cấp 2+3'].sum()), 2) if 'HS cấp 2+3' in df_rows else 0.0
-    row_dict['SV + DL <45'] = round(float(df_rows['SV + DL <45'].sum()), 2) if 'SV + DL <45' in df_rows else 0.0
-    row_dict['Khác (HS1+45-60+60+Chưa điền)'] = (
-        round(float(df_rows['Khác (HS1+45-60+60+Chưa điền)'].sum()), 2)
-        if 'Khác (HS1+45-60+60+Chưa điền)' in df_rows else 0.0
-    )
+    for col in REPORT_3_CONSOLIDATED_COLUMNS:
+        row_dict[col] = round(float(df_rows[col].sum()), 2) if col in df_rows else 0.0
     
     return row_dict
 
@@ -628,7 +645,6 @@ def prepare_excel_report_3(df_report_3):
         return df_report_3
         
     df_excel = df_report_3.copy()
-    from data_processing import AGE_GROUPS
     
     df_result = build_excel_with_subtotals(
         df_excel,
@@ -636,11 +652,9 @@ def prepare_excel_report_3(df_report_3):
     )
     
     # Tính các cột % cho Excel
-    for g in AGE_GROUPS:
-        df_result[f"{g} (%)"] = (df_result[g] / df_result['TỔNG'].replace(0, 1) * 100).where(df_result['TỔNG'] > 0, 0).round(2)
-        
-    df_result['HS cấp 2+3 (%)'] = (df_result['HS cấp 2+3'] / df_result['TỔNG'].replace(0, 1) * 100).where(df_result['TỔNG'] > 0, 0).round(2)
-    df_result['SV + DL <45 (%)'] = (df_result['SV + DL <45'] / df_result['TỔNG'].replace(0, 1) * 100).where(df_result['TỔNG'] > 0, 0).round(2)
-    df_result['Khác (HS1+45-60+60+Chưa điền) (%)'] = (df_result['Khác (HS1+45-60+60+Chưa điền)'] / df_result['TỔNG'].replace(0, 1) * 100).where(df_result['TỔNG'] > 0, 0).round(2)
+    for col in AGE_GROUPS + REPORT_3_CONSOLIDATED_COLUMNS:
+        df_result[f"{col} (%)"] = (
+            df_result[col] / df_result['TỔNG'].replace(0, 1) * 100
+        ).where(df_result['TỔNG'] > 0, 0).round(2)
     
     return df_result

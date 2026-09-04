@@ -372,6 +372,60 @@ function(params) {
 }
 """)
 
+style_r3_at_least_80_green = JsCode("""
+function(params) {
+    var val = params.value;
+    if (val === undefined || val === null) {
+        if (params.node && (params.node.group || params.node.footer) && params.node.aggData) {
+            val = params.node.aggData[params.colDef.field] || 0;
+        } else if (params.data) {
+            val = params.data[params.colDef.field] || 0;
+        } else {
+            val = 0;
+        }
+    }
+
+    var total = 0;
+    if (params.node && (params.node.group || params.node.footer) && params.node.aggData) {
+        total = params.node.aggData['TỔNG'] || 0;
+    } else if (params.data) {
+        total = params.data['TỔNG'] || 0;
+    }
+
+    var pct = total > 0 ? (Number(val) / Number(total) * 100) : 0;
+    return pct >= 80
+        ? {'backgroundColor': '#ccffcc'}
+        : {'backgroundColor': '#ffcccc'};
+}
+""")
+
+style_r3_at_most_20_green = JsCode("""
+function(params) {
+    var val = params.value;
+    if (val === undefined || val === null) {
+        if (params.node && (params.node.group || params.node.footer) && params.node.aggData) {
+            val = params.node.aggData[params.colDef.field] || 0;
+        } else if (params.data) {
+            val = params.data[params.colDef.field] || 0;
+        } else {
+            val = 0;
+        }
+    }
+
+    var total = 0;
+    if (params.node && (params.node.group || params.node.footer) && params.node.aggData) {
+        total = params.node.aggData['TỔNG'] || 0;
+    } else if (params.data) {
+        total = params.data['TỔNG'] || 0;
+    }
+
+    var pct = total > 0 ? (Number(val) / Number(total) * 100) : 0;
+    return pct <= 20
+        ? {'backgroundColor': '#ccffcc'}
+        : {'backgroundColor': '#ffcccc'};
+}
+""")
+
 formatter_r3_tong = JsCode("""
 function(params) {
     var val = params.value;
@@ -630,12 +684,17 @@ def configure_report2_grid_columns(gb, count_cols=None):
 def configure_report3_grid_columns(gb):
     """
     Cấu hình các cột cho Báo cáo 3: Ma trận Nguồn × Nhóm tuổi.
-    Bao gồm 8 nhóm tuổi, cột TỔNG, và 3 nhóm gộp, tất cả đều hiển thị Số lượng (%).
+    Bao gồm 7 nhóm tuổi, cột TỔNG, và 3 nhóm gộp, tất cả đều hiển thị Số lượng (%).
     """
     # Cấu hình tự động xuống dòng cho header
     gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
 
-    from data_processing import AGE_GROUPS
+    from data_processing import (
+        AGE_GROUPS,
+        REPORT_3_SCHOOL_WORKER_COLUMN,
+        REPORT_3_STUDENT_YOUNG_COLUMN,
+        REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
+    )
 
     for col in AGE_GROUPS:
         gb.configure_column(
@@ -653,18 +712,27 @@ def configure_report3_grid_columns(gb):
         cellStyle={'fontWeight': 'bold'}
     )
 
-    consolidated_cols = [
-        "HS cấp 2+3",
-        "SV + DL <45",
-        "Khác (HS1+45-60+60+Chưa điền)"
-    ]
-    for col in consolidated_cols:
-        gb.configure_column(
-            col,
-            aggFunc="sum",
-            valueFormatter=formatter_r3_age_group,
-            width=150
-        )
+    gb.configure_column(
+        REPORT_3_STUDENT_YOUNG_COLUMN,
+        aggFunc="sum",
+        valueFormatter=formatter_r3_age_group,
+        cellStyle=style_r3_at_least_80_green,
+        width=190,
+    )
+    gb.configure_column(
+        REPORT_3_SCHOOL_WORKER_COLUMN,
+        aggFunc="sum",
+        valueFormatter=formatter_r3_age_group,
+        cellStyle=style_r3_at_most_20_green,
+        width=190,
+    )
+    gb.configure_column(
+        REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
+        aggFunc="sum",
+        valueFormatter=formatter_r3_age_group,
+        cellStyle=style_r3_at_least_80_green,
+        width=210,
+    )
 
 
 def update_manual_inputs_in_state(grid_response, state_key, keys, editable_cols=None):

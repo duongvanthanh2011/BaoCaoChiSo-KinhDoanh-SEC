@@ -251,32 +251,47 @@ def _classify_nguon(label):
 # ==========================================
 
 AGE_GROUPS = [
-    "Học sinh cấp 1",
     "Học sinh cấp 2",
     "Học sinh cấp 3",
-    "Sinh viên",
-    "Người đi làm dưới 45 tuổi",
-    "Người đi làm từ 45 đến dưới 60 tuổi",
-    "Người trên 60 tuổi",
-    "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
+    "Sinh Viên",
+    "Người đi làm dưới 35 Tuổi",
+    "Người đi làm từ 35 - 50 Tuổi",
+    "Độ tuổi khác",
+    "Chưa điền",
+]
+
+REPORT_3_STUDENT_YOUNG_COLUMN = "Nhóm SV + Người đi làm dưới 35 Tuổi"
+REPORT_3_SCHOOL_WORKER_COLUMN = "HS C2 + C3 + Người đi làm từ 35 - 50 Tuổi"
+REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN = (
+    "SV + Người đi làm dưới 35 tuổi + Chưa điền"
+)
+REPORT_3_CONSOLIDATED_COLUMNS = [
+    REPORT_3_STUDENT_YOUNG_COLUMN,
+    REPORT_3_SCHOOL_WORKER_COLUMN,
+    REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
 ]
 
 # Lookup dict: lowercase → tên chuẩn trong AGE_GROUPS (dùng cho so sánh case-insensitive)
-_AGE_GROUP_LOOKUP = {g.lower(): g for g in AGE_GROUPS[:-1]}
+_AGE_GROUP_LOOKUP = {g.lower(): g for g in AGE_GROUPS}
+_UNFILLED_AGE_ALIASES = {
+    "sale chưa điền & điền trùng",
+}
 
 def classify_age_group(description):
     """
     Phân loại nhóm tuổi từ trường description.
-    So sánh case-insensitive: "Sinh Viên" → "Sinh viên", "Người đi làm dưới 45 Tuổi" → "Người đi làm dưới 45 tuổi"
-    Nếu rỗng hoặc không khớp 7 nhóm đầu → SALE CHƯA ĐIỀN & ĐIỀN TRÙNG
+    So sánh không phân biệt chữ hoa/thường và loại bỏ khoảng trắng hai đầu.
+    Giá trị rỗng đưa vào "Chưa điền"; giá trị không khớp đưa vào "Độ tuổi khác".
     """
     if not description or not isinstance(description, str) or not description.strip():
-        return "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
+        return "Chưa điền"
     desc = description.strip().lower()
+    if desc in _UNFILLED_AGE_ALIASES:
+        return "Chưa điền"
     canonical = _AGE_GROUP_LOOKUP.get(desc)
     if canonical:
         return canonical
-    return "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
+    return "Độ tuổi khác"
 
 # ==========================================
 # PHÂN LOẠI NGUỒN VỚI PRIORITY RULES
@@ -442,7 +457,7 @@ def transform_dataframe(df, src_ids, type_ids, account_types_list, users_list=No
         df["Nhóm tuổi"] = df["description"].apply(classify_age_group)
     else:
         # Fallback nếu API không trả về description
-        df["Nhóm tuổi"] = "SALE CHƯA ĐIỀN & ĐIỀN TRÙNG"
+        df["Nhóm tuổi"] = "Chưa điền"
     
     # 7. Thêm cột nguồn với trọng số riêng cho Báo cáo 2 và 3.
     source_details = df.get(

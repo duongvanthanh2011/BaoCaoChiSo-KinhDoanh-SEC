@@ -311,7 +311,7 @@ def render_report_3(result_3):
         pinned_row = aggregate_report_3_rows(df_to_show, time_val, '', '📊 TỔNG CỘNG')
 
     # Hiển thị AgGrid (đồng nhất giao diện & font chữ với Báo cáo 1 và 2)
-    render_aggrid_report(df_to_show, gb, pinned_row, "grid_report_3_v1")
+    render_aggrid_report(df_to_show, gb, pinned_row, "grid_report_3_v3")
 
     # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
     df_excel = prepare_excel_report_3(df_to_show)
