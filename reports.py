@@ -19,7 +19,8 @@ from st_aggrid.grid_options_builder import GridOptionsBuilder
 from report_utils import (
     configure_standard_grid_columns,
     configure_report2_grid_columns,
-    configure_report3_grid_columns
+    configure_report3_grid_columns,
+    configure_report4_grid_columns,
 )
 from report_components import (
     manual_input_expander,
@@ -28,6 +29,7 @@ from report_components import (
     render_dot_nguon_matrix_inputs,
     render_aggrid_report,
     render_excel_download,
+    render_excel_download_multi_sheets,
     assign_dot_manual_to_first_row,
     render_report_actions_bar,
 
@@ -37,11 +39,14 @@ from report_calculations import (
     compute_report_1, 
     compute_report_2, 
     compute_report_3,
+    compute_report_4,
     prepare_excel_report_1,
     prepare_excel_report_2,
     prepare_excel_report_3,
+    prepare_excel_report_4,
     aggregate_report_2_rows,
     aggregate_report_3_rows,
+    aggregate_report_4_rows,
     calculate_report_2_average_metrics,
     REPORT_2_ADVISOR_COLUMN,
     REPORT_2_AVERAGE_COLUMN,
@@ -370,8 +375,29 @@ def render_report_3(result_3):
         time_val = df_to_show['Thời gian xuất data'].iloc[0] if len(df_to_show) > 0 else ''
         pinned_row = aggregate_report_3_rows(df_to_show, time_val, '', '📊 TỔNG CỘNG')
 
+    # Ghi chú giải thích định dạng ô
+    st.markdown(
+        """
+        <div style="
+            background: linear-gradient(135deg, #E3F2FD 0%, #F3E5F5 100%);
+            border-left: 4px solid #1565C0;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+        ">
+            <b>📝 Ghi chú định dạng ô:</b><br>
+            Mỗi ô hiển thị: <b>Tổng data (%) </b> / <span style="color:#1565C0; font-weight:600">Cọc Chốt (%)</span><br>
+            &bull; <b>Phần trước "/"</b> — Tổng trọng số data theo Nguồn × Nhóm tuổi. <i>Mẫu số %</i> = TỔNG dòng (tất cả nhóm tuổi).<br>
+            &bull; <span style="color:#1565C0; font-weight:600">Phần sau "/"</span> — Chỉ tính data có Mối quan hệ: <code>ĐÃ CỌC</code>, <code>ĐÃ CHỐT FULL</code>, <code>ĐÃ CHỐT - TIỀM NĂNG UPSALE</code>. <i>Mẫu số %</i> = TỔNG Cọc Chốt dòng.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     # Hiển thị AgGrid (đồng nhất giao diện & font chữ với Báo cáo 1 và 2)
-    render_aggrid_report(df_to_show, gb, pinned_row, "grid_report_3_v3")
+    render_aggrid_report(df_to_show, gb, pinned_row, "grid_report_3_v5")
 
     # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
     df_excel = prepare_excel_report_3(df_to_show)
@@ -381,3 +407,62 @@ def render_report_3(result_3):
         file_name='Bao_cao_Nguon_Tuoi.xlsx',
         button_label='📥 Tải xuống Báo cáo 3 (Excel)'
     )
+
+
+def render_report_4(results_4):
+    """
+    Hiển thị Báo cáo 4: Thống kê Nguồn Onl / Off / Tổng theo Đợt học thử.
+    Gồm 3 bảng: Nguồn Onl, Nguồn Off, Tổng nguồn (Onl + Off).
+    """
+    st.subheader("Bản xem trước: Báo cáo Nguồn Onl / Off / Tổng theo Đợt học thử")
+
+    if not isinstance(results_4, dict):
+        st.warning("⚠️ Không có dữ liệu để hiển thị.")
+        return
+
+    tables_config = [
+        ("#### I. Bảng nguồn Onl", results_4.get('onl'), "grid_report_4_onl_v1"),
+        ("#### II. Bảng nguồn Off", results_4.get('off'), "grid_report_4_off_v1"),
+        ("#### III. Bảng tổng nguồn (Onl + Off)", results_4.get('tong'), "grid_report_4_tong_v1"),
+    ]
+
+    all_empty = all(df is None or df.empty for _, df, _ in tables_config)
+    if all_empty:
+        st.warning("⚠️ Không có dữ liệu để hiển thị.")
+        return
+
+    for title, df, key in tables_config:
+        st.markdown(title)
+        if df is None or df.empty:
+            st.warning("⚠️ Không có dữ liệu trong bảng này.")
+            continue
+
+        df_to_show = df.copy()
+        gb = GridOptionsBuilder.from_dataframe(df_to_show)
+        gb.configure_column("Thời gian xuất data", width=140, pinned="left")
+        gb.configure_column("Nguồn", width=200, pinned="left")
+        configure_report4_grid_columns(gb)
+
+        pinned_row = None
+        if not df_to_show.empty:
+            time_val = df_to_show['Thời gian xuất data'].iloc[0] if len(df_to_show) > 0 else ''
+            pinned_row = aggregate_report_4_rows(df_to_show, time_val, '📊 TỔNG CỘNG')
+
+        render_aggrid_report(df_to_show, gb, pinned_row, key)
+
+    # Cuối hàm: 1 nút download Excel cho cả 3 sheet
+    excel_sheets = []
+    if results_4.get('onl') is not None and not results_4['onl'].empty:
+        excel_sheets.append(('BC_Nguon_Onl', prepare_excel_report_4(results_4['onl'])))
+    if results_4.get('off') is not None and not results_4['off'].empty:
+        excel_sheets.append(('BC_Nguon_Off', prepare_excel_report_4(results_4['off'])))
+    if results_4.get('tong') is not None and not results_4['tong'].empty:
+        excel_sheets.append(('BC_Tong_Nguon', prepare_excel_report_4(results_4['tong'])))
+
+    if excel_sheets:
+        render_excel_download_multi_sheets(
+            excel_sheets,
+            file_name='Bao_cao_Nguon_Onl_Off_Tong.xlsx',
+            button_label='📥 Tải xuống Báo cáo 4 (Excel)'
+        )
+

@@ -34,6 +34,8 @@ COC_CHOT_LABELS = [
     "ĐÃ CHỐT FULL",
 ]
 
+COC_COL_SUFFIX = " (Cọc Chốt)"
+
 SAI_SO_SAI_DOI_TUONG_LABELS = [
     "SAI SỐ",
     "SAI ĐỐI TƯỢNG.",
@@ -343,32 +345,70 @@ function(params) {
 # ==========================================
 
 formatter_r3_age_group = JsCode("""
-function(params) {
-    var val = params.value;
-    if (val === undefined || val === null) {
-        if (params.node && params.node.group && params.node.aggData) {
-            val = params.node.aggData[params.colDef.field] || 0;
-        } else if (params.data) {
-            val = params.data[params.colDef.field] || 0;
+class CellRenderer {
+    init(params) {
+        this.eGui = document.createElement('span');
+        var colField = params.colDef.field;
+        var cocField = colField + ' (Cọc Chốt)';
+        var val = params.value;
+        var cocVal = undefined;
+        var total = 0;
+        var cocTotal = 0;
+
+        if (params.node && params.node.rowPinned) {
+            if (val === undefined || val === null) {
+                val = params.data ? (params.data[colField] || 0) : 0;
+            }
+            cocVal = params.data ? (params.data[cocField] || 0) : 0;
+            total = params.data ? (params.data['TỔNG'] || 0) : 0;
+            cocTotal = params.data ? (params.data['TỔNG (Cọc Chốt)'] || 0) : 0;
+        } else if (params.node && (params.node.group || params.node.footer)) {
+            if (params.node.aggData) {
+                if (val === undefined || val === null) {
+                    val = params.node.aggData[colField] || 0;
+                }
+                cocVal = params.node.aggData[cocField] || 0;
+                total = params.node.aggData['TỔNG'] || 0;
+                cocTotal = params.node.aggData['TỔNG (Cọc Chốt)'] || 0;
+            } else if (params.data) {
+                if (val === undefined || val === null) {
+                    val = params.data[colField] || 0;
+                }
+                cocVal = params.data[cocField] || 0;
+                total = params.data['TỔNG'] || 0;
+                cocTotal = params.data['TỔNG (Cọc Chốt)'] || 0;
+            }
         } else {
-            return '';
+            if (params.data) {
+                if (val === undefined || val === null) {
+                    val = params.data[colField] || 0;
+                }
+                cocVal = params.data[cocField] || 0;
+                total = params.data['TỔNG'] || 0;
+                cocTotal = params.data['TỔNG (Cọc Chốt)'] || 0;
+            }
         }
+
+        if (val === undefined || val === null) {
+            this.eGui.innerHTML = '';
+            return;
+        }
+
+        var num = Number(val);
+        if (isNaN(num)) num = 0;
+        var numStr = (num % 1 === 0) ? num.toString() : num.toFixed(2);
+        var pct = total > 0 ? (num / total * 100) : 0;
+
+        var cocNum = Number(cocVal);
+        if (isNaN(cocNum)) cocNum = 0;
+        var cocNumStr = (cocNum % 1 === 0) ? cocNum.toString() : cocNum.toFixed(2);
+        var cocPct = cocTotal > 0 ? (cocNum / cocTotal * 100) : 0;
+
+        this.eGui.innerHTML = numStr + ' (' + pct.toFixed(2) + '%) / ' + '<span style="color:#1565C0;font-weight:600">' + cocNumStr + ' (' + cocPct.toFixed(2) + '%)</span>';
     }
-    
-    var total = 0;
-    if (params.node && params.node.rowPinned) {
-        total = params.data ? (params.data['TỔNG'] || 0) : 0;
-    } else if (params.node && (params.node.group || params.node.footer)) {
-        total = params.node.aggData ? (params.node.aggData['TỔNG'] || 0) : 0;
-    } else {
-        total = params.data ? (params.data['TỔNG'] || 0) : 0;
+    getGui() {
+        return this.eGui;
     }
-    
-    var num = Number(val);
-    if (isNaN(num)) num = 0;
-    var numStr = (num % 1 === 0) ? num.toString() : num.toFixed(2);
-    var pct = total > 0 ? (num / total * 100) : 0;
-    return numStr + ' (' + pct.toFixed(2) + '%)';
 }
 """)
 
@@ -427,48 +467,88 @@ function(params) {
 """)
 
 formatter_r3_tong = JsCode("""
-function(params) {
-    var val = params.value;
-    if (val === undefined || val === null) {
-        if (params.node && params.node.group && params.node.aggData) {
-            val = params.node.aggData['TỔNG'] || 0;
-        } else if (params.data) {
-            val = params.data['TỔNG'] || 0;
+class CellRenderer {
+    init(params) {
+        this.eGui = document.createElement('span');
+        var val = params.value;
+        var cocVal = undefined;
+
+        if (params.node && params.node.rowPinned) {
+            if (val === undefined || val === null) {
+                val = params.data ? (params.data['TỔNG'] || 0) : 0;
+            }
+            cocVal = params.data ? (params.data['TỔNG (Cọc Chốt)'] || 0) : 0;
+        } else if (params.node && (params.node.group || params.node.footer)) {
+            if (params.node.aggData) {
+                if (val === undefined || val === null) {
+                    val = params.node.aggData['TỔNG'] || 0;
+                }
+                cocVal = params.node.aggData['TỔNG (Cọc Chốt)'] || 0;
+            } else if (params.data) {
+                if (val === undefined || val === null) {
+                    val = params.data['TỔNG'] || 0;
+                }
+                cocVal = params.data['TỔNG (Cọc Chốt)'] || 0;
+            }
         } else {
-            return '';
-        }
-    }
-    
-    var num = Number(val);
-    if (isNaN(num)) num = 0;
-    var numStr = (num % 1 === 0) ? num.toString() : num.toFixed(2);
-    var pct = 0;
-    
-    if (params.node && params.node.rowPinned) {
-        pct = 100;
-    } else if (params.node && (params.node.group || params.node.footer) && params.node.level === 0) {
-        var grandTotal = 0;
-        if (params.api && typeof params.api.getPinnedTopRow === 'function') {
-            var topRow = params.api.getPinnedTopRow(0);
-            if (topRow && topRow.data) {
-                grandTotal = topRow.data['TỔNG'] || 0;
+            if (params.data) {
+                if (val === undefined || val === null) {
+                    val = params.data['TỔNG'] || 0;
+                }
+                cocVal = params.data['TỔNG (Cọc Chốt)'] || 0;
             }
         }
-        pct = grandTotal > 0 ? (num / grandTotal * 100) : 100;
-    } else if (params.node && params.node.parent && params.node.parent.aggData) {
-        var dotTotal = params.node.parent.aggData['TỔNG'] || 0;
-        pct = dotTotal > 0 ? (num / dotTotal * 100) : 0;
-    } else {
-        pct = 100;
+
+        if (val === undefined || val === null) {
+            this.eGui.innerHTML = '';
+            return;
+        }
+
+        var num = Number(val);
+        if (isNaN(num)) num = 0;
+        var numStr = (num % 1 === 0) ? num.toString() : num.toFixed(2);
+
+        var cocNum = Number(cocVal);
+        if (isNaN(cocNum)) cocNum = 0;
+        var cocNumStr = (cocNum % 1 === 0) ? cocNum.toString() : cocNum.toFixed(2);
+
+        var pct = 0;
+        var cocPct = 0;
+
+        if (params.node && params.node.rowPinned) {
+            pct = 100;
+            cocPct = 100;
+        } else if (params.node && (params.node.group || params.node.footer) && params.node.level === 0) {
+            var grandTotal = 0;
+            var grandTotalCoc = 0;
+            if (params.api && typeof params.api.getPinnedTopRow === 'function') {
+                var topRow = params.api.getPinnedTopRow(0);
+                if (topRow && topRow.data) {
+                    grandTotal = topRow.data['TỔNG'] || 0;
+                    grandTotalCoc = topRow.data['TỔNG (Cọc Chốt)'] || 0;
+                }
+            }
+            pct = grandTotal > 0 ? (num / grandTotal * 100) : 100;
+            cocPct = grandTotalCoc > 0 ? (cocNum / grandTotalCoc * 100) : (cocNum > 0 ? 100 : 0);
+        } else if (params.node && params.node.parent && params.node.parent.aggData) {
+            var dotTotal = params.node.parent.aggData['TỔNG'] || 0;
+            var dotTotalCoc = params.node.parent.aggData['TỔNG (Cọc Chốt)'] || 0;
+            pct = dotTotal > 0 ? (num / dotTotal * 100) : 0;
+            cocPct = dotTotalCoc > 0 ? (cocNum / dotTotalCoc * 100) : 0;
+        } else {
+            pct = 100;
+            cocPct = 100;
+        }
+
+        this.eGui.innerHTML = numStr + ' (' + pct.toFixed(2) + '%) / ' + '<span style="color:#1565C0;font-weight:600">' + cocNumStr + ' (' + cocPct.toFixed(2) + '%)</span>';
     }
-    
-    return numStr + ' (' + pct.toFixed(2) + '%)';
+    getGui() {
+        return this.eGui;
+    }
 }
 """)
 
 
-# ==========================================
-# FORMATTERS & STYLES CHO CÁC CỘT GỘP SỐ LƯỢNG & PHẦN TRĂM (TỐI ƯU HÓA)
 # ==========================================
 
 formatter_merged = JsCode("""
@@ -700,39 +780,98 @@ def configure_report3_grid_columns(gb):
         gb.configure_column(
             col,
             aggFunc="sum",
-            valueFormatter=formatter_r3_age_group,
-            width=140
+            cellRenderer=formatter_r3_age_group,
+            width=160
         )
 
     gb.configure_column(
         "TỔNG",
         aggFunc="sum",
-        valueFormatter=formatter_r3_tong,
-        width=140,
+        cellRenderer=formatter_r3_tong,
+        width=160,
         cellStyle={'fontWeight': 'bold'}
     )
 
     gb.configure_column(
         REPORT_3_STUDENT_YOUNG_COLUMN,
         aggFunc="sum",
-        valueFormatter=formatter_r3_age_group,
+        cellRenderer=formatter_r3_age_group,
         cellStyle=style_r3_at_least_80_green,
-        width=190,
+        width=210,
     )
     gb.configure_column(
         REPORT_3_SCHOOL_WORKER_COLUMN,
         aggFunc="sum",
-        valueFormatter=formatter_r3_age_group,
+        cellRenderer=formatter_r3_age_group,
         cellStyle=style_r3_at_most_20_green,
-        width=190,
+        width=210,
     )
     gb.configure_column(
         REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
         aggFunc="sum",
-        valueFormatter=formatter_r3_age_group,
+        cellRenderer=formatter_r3_age_group,
         cellStyle=style_r3_at_least_80_green,
-        width=210,
+        width=230,
     )
+
+    # 11 cột cọc chốt ẩn nhưng có aggFunc="sum" để tính aggData trong group footer cho formatter đọc
+    for col in AGE_GROUPS + ['TỔNG'] + [
+        REPORT_3_STUDENT_YOUNG_COLUMN,
+        REPORT_3_SCHOOL_WORKER_COLUMN,
+        REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
+    ]:
+        gb.configure_column(f"{col}{COC_COL_SUFFIX}", hide=True, aggFunc="sum", width=100)
+
+
+# ==========================================
+# JS GETTERS & CẤU HÌNH CỘT CHO BÁO CÁO 4
+# ==========================================
+
+getter_r4_data_per_bill = JsCode("""
+function(params) {
+    var total = 0, bill = 0;
+    if (params.node && params.node.rowPinned) {
+        total = params.data ? (params.data['Tổng data'] || 0) : 0;
+        bill = params.data ? (params.data['Bill cọc'] || 0) : 0;
+    } else if (params.node && (params.node.group || params.node.footer)) {
+        total = params.node.aggData ? (params.node.aggData['Tổng data'] || 0) : 0;
+        bill = params.node.aggData ? (params.node.aggData['Bill cọc'] || 0) : 0;
+    } else {
+        total = params.data ? (params.data['Tổng data'] || 0) : 0;
+        bill = params.data ? (params.data['Bill cọc'] || 0) : 0;
+    }
+    return bill > 0 ? (total / bill) : 0;
+}
+""")
+
+getter_r4_bill_per_data = JsCode("""
+function(params) {
+    var total = 0, bill = 0;
+    if (params.node && params.node.rowPinned) {
+        total = params.data ? (params.data['Tổng data'] || 0) : 0;
+        bill = params.data ? (params.data['Bill cọc'] || 0) : 0;
+    } else if (params.node && (params.node.group || params.node.footer)) {
+        total = params.node.aggData ? (params.node.aggData['Tổng data'] || 0) : 0;
+        bill = params.node.aggData ? (params.node.aggData['Bill cọc'] || 0) : 0;
+    } else {
+        total = params.data ? (params.data['Tổng data'] || 0) : 0;
+        bill = params.data ? (params.data['Bill cọc'] || 0) : 0;
+    }
+    return total > 0 ? (bill / total * 100) : 0;
+}
+""")
+
+
+def configure_report4_grid_columns(gb):
+    """
+    Cấu hình các cột cho Báo cáo 4: Thống kê Nguồn Onl / Off / Tổng.
+    Mỗi bảng có 5 cột: Nguồn, Tổng data, Bill cọc, Data/Bill, Bill/Data (%).
+    """
+    gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
+    gb.configure_column("Tổng data", aggFunc="sum", valueFormatter=formatter_float_2_decimals, width=120)
+    gb.configure_column("Bill cọc", aggFunc="sum", valueFormatter=formatter_float_2_decimals, width=120)
+    gb.configure_column("Data/Bill", valueGetter=getter_r4_data_per_bill, valueFormatter=formatter_float_2_decimals, width=120)
+    gb.configure_column("Bill/Data (%)", valueGetter=getter_r4_bill_per_data, valueFormatter=pct_formatter, width=130)
 
 
 def update_manual_inputs_in_state(grid_response, state_key, keys, editable_cols=None):

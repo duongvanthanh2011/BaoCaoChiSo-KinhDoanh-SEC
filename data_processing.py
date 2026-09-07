@@ -6,6 +6,8 @@ Chứa các hàm:
 - Biến đổi DataFrame sau khi nhận dữ liệu từ API
 """
 
+import re
+import unicodedata
 import pandas as pd
 from datetime import datetime, time, timezone, timedelta
 
@@ -350,6 +352,51 @@ def classify_report_3_source(label):
 
 
 # ==========================================
+# PHÂN LOẠI & MỞ RỘNG NGUỒN CHO BÁO CÁO 4
+# ==========================================
+
+REPORT_4_ONL_ROWS = [f"{ch} TC{n}" for n in range(1, 7) for ch in ("Facebook", "Google")]
+REPORT_4_OFF_ROWS = [f"Facebook TC{n}" for n in range(1, 7)]
+
+_RE_ONL_FB = re.compile(r"^ADS TRUONG CHINH.*ADS FB([1-6])$")
+_RE_ONL_GG = re.compile(r"^ADS TRUONG CHINH.*ADS GG([1-6])$")
+_RE_OFF    = re.compile(r"OFF(?: ?TC)? ?([1-6])$")
+
+def _normalize_source_label(label):
+    """Uppercase, bỏ dấu tiếng Việt (Đ→D), gộp khoảng trắng — dùng cho khớp regex BC4."""
+    s = unicodedata.normalize("NFD", str(label).upper()).replace("Đ", "D")
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return re.sub(r"\s+", " ", s).strip()
+
+def classify_report_4_source(label):
+    """Trả về (tên_dòng, bảng) với bảng ∈ {'onl','off'}; None nếu không khớp."""
+    if not isinstance(label, str) or not label.strip():
+        return None
+    norm = _normalize_source_label(label)
+    m = _RE_ONL_FB.search(norm)
+    if m: return (f"Facebook TC{m.group(1)}", "onl")
+    m = _RE_ONL_GG.search(norm)
+    if m: return (f"Google TC{m.group(1)}", "onl")
+    m = _RE_OFF.search(norm)
+    if m: return (f"Facebook TC{m.group(1)}", "off")
+    return None
+
+def expand_report_4_sources_with_weights(account_source_details):
+    """Chia 1/N cho mọi nguồn; chỉ giữ nguồn khớp BC4, dưới dạng 'onl::Facebook TC1' / 'off::Facebook TC1'."""
+    if not isinstance(account_source_details, list) or not account_source_details:
+        return []
+    weight = 1.0 / len(account_source_details)
+    result = []
+    for item in account_source_details:
+        label = item.get("label", "") if isinstance(item, dict) else (item if isinstance(item, str) else "")
+        matched = classify_report_4_source(label)
+        if matched:
+            bucket, table = matched
+            result.append((f"{table}::{bucket}", weight))
+    return result
+
+
+# ==========================================
 # PHÂN BỔ TRỌNG SỐ CHO CÁC NGUỒN
 # ==========================================
 
@@ -459,7 +506,7 @@ def transform_dataframe(df, src_ids, type_ids, account_types_list, users_list=No
         # Fallback nếu API không trả về description
         df["Nhóm tuổi"] = "Chưa điền"
     
-    # 7. Thêm cột nguồn với trọng số riêng cho Báo cáo 2 và 3.
+    # 7. Thêm cột nguồn với trọng số riêng cho Báo cáo 2, 3 và 4.
     source_details = df.get(
         "account_source_details",
         pd.Series(index=df.index, dtype=object),
@@ -469,6 +516,9 @@ def transform_dataframe(df, src_ids, type_ids, account_types_list, users_list=No
     )
     df["_report_3_sources_with_weights"] = source_details.apply(
         expand_report_3_sources_with_weights
+    )
+    df["_report_4_sources_with_weights"] = source_details.apply(
+        expand_report_4_sources_with_weights
     )
 
     return df

@@ -2,7 +2,7 @@
 report_calculations.py — Module tính toán số liệu và chuẩn bị dữ liệu Excel
 Chứa:
 - Thêm cột chỉ báo nhãn
-- Tính toán dữ liệu tổng hợp cho Báo cáo 1 & 2
+- Tính toán dữ liệu tổng hợp cho Báo cáo 1, 2, 3, 4
 - Tính toán tỷ lệ phần trăm và cấu trúc dòng Tổng cộng cho xuất Excel
 """
 
@@ -22,14 +22,18 @@ from data_processing import (
     REPORT_3_SCHOOL_WORKER_COLUMN,
     REPORT_3_STUDENT_YOUNG_COLUMN,
     REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
+    REPORT_4_ONL_ROWS,
+    REPORT_4_OFF_ROWS,
     classify_age_group,
     expand_report_3_sources_with_weights,
+    expand_report_4_sources_with_weights,
 )
 from time_utils import format_fetch_time
 
 
 REPORT_2_ADVISOR_COLUMN = 'Số CVHT đi làm'
 REPORT_2_AVERAGE_COLUMN = 'Data trung bình/ngày/CVHT'
+COC_COL_SUFFIX = " (Cọc Chốt)"
 
 
 def get_cached_base_reports(raw_df, selected_sessions, revision):
@@ -40,10 +44,18 @@ def get_cached_base_reports(raw_df, selected_sessions, revision):
     if cached is None or cached['key'] != key:
         filtered = raw_df[raw_df['ĐỢT HỌC THỬ'].isin(sessions)].copy() if sessions else raw_df.copy()
         filtered = add_indicator_columns(filtered)
-        results = (compute_report_1(filtered), compute_report_2(filtered), compute_report_3(filtered))
+        results = (
+            compute_report_1(filtered),
+            compute_report_2(filtered),
+            compute_report_3(filtered),
+            compute_report_4(filtered),
+        )
         cached = {'key': key, 'results': results}
         st.session_state['_base_reports_cache'] = cached
-    return tuple(frame.copy() for frame in cached['results'])
+    return tuple(
+        r.copy() if isinstance(r, pd.DataFrame) else {k: v.copy() for k, v in r.items()}
+        for r in cached['results']
+    )
 
 
 def add_indicator_columns(df_filtered):
@@ -156,6 +168,7 @@ def compute_report_1(df_filtered):
 def expand_weighted_sources(
     df_filtered,
     extra_columns=None,
+    numeric_columns=None,
     source_weights_column="_sources_with_weights",
 ):
     """
@@ -166,12 +179,15 @@ def expand_weighted_sources(
         df_filtered: DataFrame đã lọc, chứa cột trọng số nguồn.
         extra_columns: Dict {tên_cột_nguồn: giá_trị_mặc_định} cho các cột bổ sung
                        (ví dụ {"Nhóm tuổi": "Chưa điền"}).
+        numeric_columns: Danh sách cột số copy nguyên giá trị từ dòng gốc vào dòng expand
+                         (mặc định 0 nếu thiếu/không phải số).
         source_weights_column: Tên cột chứa danh sách (nguồn, trọng số).
 
     Returns:
-        pd.DataFrame với các cột: ĐỢT HỌC THỬ, Nguồn, Weight, + extra_columns.
+        pd.DataFrame với các cột: ĐỢT HỌC THỬ, Nguồn, Weight, + extra_columns + numeric_columns.
     """
     extra_columns = extra_columns or {}
+    numeric_columns = numeric_columns or []
     rows = []
     for _, row in df_filtered.iterrows():
         sources_weights = row.get(source_weights_column)
@@ -189,6 +205,14 @@ def expand_weighted_sources(
             if not isinstance(val, str) or not val.strip():
                 val = default_val
             extra_vals[col_name] = val
+
+        for num_col in numeric_columns:
+            val = row.get(num_col)
+            try:
+                val = float(val) if pd.notna(val) else 0.0
+            except (ValueError, TypeError):
+                val = 0.0
+            extra_vals[num_col] = val
 
         for source_classified, weight in sources_weights:
             entry = {
@@ -468,6 +492,7 @@ def aggregate_report_2_rows(
         'Tỷ lệ data thực tế/data order': round(tot_data / tot_order * 100, 2) if tot_order else 0.0,
     }
 
+
 def _get_dot_manual_values(dot_manual_df, dot_name):
     """Trích xuất giá trị nhập tay cho một đợt cụ thể từ dot_manual_df."""
     if dot_manual_df is None or dot_manual_df.empty:
@@ -540,6 +565,7 @@ def prepare_excel_report_2(df_edited, dot_manual_df=None):
 def compute_report_3(df_filtered):
     """
     Tính toán Báo cáo 3: Ma trận Nguồn × Độ tuổi phân theo Đợt học thử với trọng số.
+    Bao gồm 7 nhóm tuổi, TỔNG, 3 nhóm tổng hợp và 11 cột Cọc Chốt tương ứng.
     
     Returns:
         pd.DataFrame với các cột:
@@ -549,12 +575,18 @@ def compute_report_3(df_filtered):
         - Các nhóm tuổi (7 cột)
         - TỔNG
         - Ba nhóm tổng hợp theo yêu cầu nghiệp vụ
+        - 11 cột cọc chốt tương ứng (sẽ ẩn trên AgGrid)
     """
+    coc_columns = [
+        f"{c}{COC_COL_SUFFIX}"
+        for c in AGE_GROUPS + ['TỔNG'] + REPORT_3_CONSOLIDATED_COLUMNS
+    ]
     cols_order = (
         ['Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn']
         + AGE_GROUPS
         + ['TỔNG']
         + REPORT_3_CONSOLIDATED_COLUMNS
+        + coc_columns
     )
 
     if df_filtered.empty:
@@ -565,6 +597,15 @@ def compute_report_3(df_filtered):
     # Dữ liệu đang có trong session từ trước khi nâng cấp có thể chưa có cột này.
     report_3_source_column = "_report_3_sources_with_weights"
     df_report_3 = df_filtered.copy()
+
+    # Fallback an toàn: nếu "Data_coc_chot" chưa có trong df_report_3
+    if "Data_coc_chot" not in df_report_3.columns:
+        if "Mối quan hệ" in df_report_3.columns:
+            df_report_3["Data_coc_chot"] = df_report_3["Mối quan hệ"].isin(COC_CHOT_LABELS).astype(int)
+        elif "relation_name" in df_report_3.columns:
+            df_report_3["Data_coc_chot"] = df_report_3["relation_name"].isin(COC_CHOT_LABELS).astype(int)
+        else:
+            df_report_3["Data_coc_chot"] = 0
 
     # Luôn phân loại lại từ description để session cũ không giữ nhóm tuổi cũ.
     # Nếu không còn description, chuẩn hóa cột Nhóm tuổi hiện có theo schema mới.
@@ -589,26 +630,34 @@ def compute_report_3(df_filtered):
     expanded_df = expand_weighted_sources(
         df_report_3,
         extra_columns={"Nhóm tuổi": "Chưa điền"},
+        numeric_columns=["Data_coc_chot"],
         source_weights_column=report_3_source_column,
     )
     if expanded_df.empty:
         return pd.DataFrame(columns=cols_order)
     
-    # Pivot table: sum weights by (ĐỢT HỌC THỬ, Nguồn, Nhóm tuổi)
-    pivot = (
+    # Trọng số Cọc Chốt: Weight_coc = Weight * Data_coc_chot
+    expanded_df["Weight_coc"] = expanded_df["Weight"] * expanded_df["Data_coc_chot"]
+
+    # Pivot table: sum weights và coc_weights by (ĐỢT HỌC THỬ, Nguồn, Nhóm tuổi) trong 1 lần groupby
+    grouped = (
         expanded_df
-        .groupby(["ĐỢT HỌC THỬ", "Nguồn", "Nhóm tuổi"])["Weight"]
+        .groupby(["ĐỢT HỌC THỬ", "Nguồn", "Nhóm tuổi"])[["Weight", "Weight_coc"]]
         .sum()
-        .unstack(fill_value=0)
     )
     
-    # Reindex với toàn bộ AGE_GROUPS
-    pivot = pivot.reindex(columns=AGE_GROUPS, fill_value=0)
+    pivot = grouped["Weight"].unstack(fill_value=0).reindex(columns=AGE_GROUPS, fill_value=0)
+    pivot_coc = grouped["Weight_coc"].unstack(fill_value=0).reindex(columns=AGE_GROUPS, fill_value=0)
     
-    # Tính TỔNG theo hàng (tổng tất cả nhóm tuổi của nguồn đó trong đợt đó)
+    # Đổi tên các cột pivot_coc thành f"{g}{COC_COL_SUFFIX}"
+    pivot_coc = pivot_coc.rename(columns={g: f"{g}{COC_COL_SUFFIX}" for g in AGE_GROUPS})
+
+    # Tính TỔNG theo hàng
     pivot["TỔNG"] = pivot[AGE_GROUPS].sum(axis=1)
+    coc_age_cols = [f"{g}{COC_COL_SUFFIX}" for g in AGE_GROUPS]
+    pivot_coc[f"TỔNG{COC_COL_SUFFIX}"] = pivot_coc[coc_age_cols].sum(axis=1)
     
-    # Các nhóm tổng hợp mới.
+    # Các nhóm tổng hợp mới (thường)
     pivot[REPORT_3_STUDENT_YOUNG_COLUMN] = (
         pivot.get("Sinh Viên", 0)
         + pivot.get("Người đi làm dưới 35 Tuổi", 0)
@@ -622,9 +671,27 @@ def compute_report_3(df_filtered):
         pivot[REPORT_3_STUDENT_YOUNG_COLUMN]
         + pivot.get("Chưa điền", 0)
     )
-    
+
+    # Các nhóm tổng hợp mới (Cọc Chốt - cùng công thức trên các cột coc)
+    pivot_coc[f"{REPORT_3_STUDENT_YOUNG_COLUMN}{COC_COL_SUFFIX}"] = (
+        pivot_coc.get(f"Sinh Viên{COC_COL_SUFFIX}", 0)
+        + pivot_coc.get(f"Người đi làm dưới 35 Tuổi{COC_COL_SUFFIX}", 0)
+    )
+    pivot_coc[f"{REPORT_3_SCHOOL_WORKER_COLUMN}{COC_COL_SUFFIX}"] = (
+        pivot_coc.get(f"Học sinh cấp 2{COC_COL_SUFFIX}", 0)
+        + pivot_coc.get(f"Học sinh cấp 3{COC_COL_SUFFIX}", 0)
+        + pivot_coc.get(f"Người đi làm từ 35 - 50 Tuổi{COC_COL_SUFFIX}", 0)
+    )
+    pivot_coc[f"{REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN}{COC_COL_SUFFIX}"] = (
+        pivot_coc[f"{REPORT_3_STUDENT_YOUNG_COLUMN}{COC_COL_SUFFIX}"]
+        + pivot_coc.get(f"Chưa điền{COC_COL_SUFFIX}", 0)
+    )
+
+    # Ghép 2 pivot lại
+    combined = pd.concat([pivot, pivot_coc], axis=1)
+
     # Reset index để đưa ĐỢT HỌC THỬ và Nguồn thành các cột bình thường
-    result_df = pivot.reset_index()
+    result_df = combined.reset_index()
     result_df.columns.name = None
     result_df.insert(0, 'Thời gian xuất data', fetch_time)
     
@@ -650,13 +717,60 @@ def aggregate_report_3_rows(df_rows, time_val, dot_val, nguon_val):
     for col in REPORT_3_CONSOLIDATED_COLUMNS:
         row_dict[col] = round(float(df_rows[col].sum()), 2) if col in df_rows else 0.0
     
+    # 11 cột Cọc Chốt
+    for col in AGE_GROUPS + ['TỔNG'] + REPORT_3_CONSOLIDATED_COLUMNS:
+        coc_col = f"{col}{COC_COL_SUFFIX}"
+        row_dict[coc_col] = round(float(df_rows[coc_col].sum()), 2) if coc_col in df_rows else 0.0
+
     return row_dict
 
 
+def _format_r3_excel_cell(val, tong, coc_val, coc_tong):
+    """
+    Format ô Báo cáo 3 cho Excel theo dạng: 'num (pct%) / cocNum (cocPct%)'.
+    - Số nguyên giữ nguyên không decimal, số lẻ làm tròn 2 chữ số thập phân.
+    - % làm tròn 2 chữ số (ví dụ '10.00%').
+    - Mẫu số tong <= 0 hoặc coc_tong <= 0 thì pct tương ứng = 0.00%.
+    """
+    try:
+        v = float(val) if pd.notna(val) else 0.0
+    except (ValueError, TypeError):
+        v = 0.0
+        
+    try:
+        t = float(tong) if pd.notna(tong) else 0.0
+    except (ValueError, TypeError):
+        t = 0.0
+
+    try:
+        cv = float(coc_val) if pd.notna(coc_val) else 0.0
+    except (ValueError, TypeError):
+        cv = 0.0
+        
+    try:
+        ct = float(coc_tong) if pd.notna(coc_tong) else 0.0
+    except (ValueError, TypeError):
+        ct = 0.0
+
+    v_str = str(int(v)) if v.is_integer() else f"{v:.2f}"
+    pct = (v / t * 100) if t > 0 else 0.0
+
+    cv_str = str(int(cv)) if cv.is_integer() else f"{cv:.2f}"
+    coc_pct = (cv / ct * 100) if ct > 0 else 0.0
+
+    return f"{v_str} ({pct:.2f}%) / {cv_str} ({coc_pct:.2f}%)"
+
+
 def prepare_excel_report_3(df_report_3):
-    """Chuẩn bị DataFrame hoàn chỉnh cho Report 3 để xuất Excel (bao gồm dòng tổng đợt, tổng cộng và các cột %)."""
+    """Chuẩn bị DataFrame hoàn chỉnh cho Report 3 để xuất Excel (bao gồm dòng tổng đợt, tổng cộng và gộp chuỗi cọc chốt)."""
+    out_cols = (
+        ['Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn']
+        + AGE_GROUPS
+        + ['TỔNG']
+        + REPORT_3_CONSOLIDATED_COLUMNS
+    )
     if df_report_3.empty:
-        return df_report_3
+        return pd.DataFrame(columns=out_cols)
         
     df_excel = df_report_3.copy()
     
@@ -665,10 +779,232 @@ def prepare_excel_report_3(df_report_3):
         aggregate_fn=aggregate_report_3_rows
     )
     
-    # Tính các cột % cho Excel
-    for col in AGE_GROUPS + REPORT_3_CONSOLIDATED_COLUMNS:
-        df_result[f"{col} (%)"] = (
-            df_result[col] / df_result['TỔNG'].replace(0, 1) * 100
-        ).where(df_result['TỔNG'] > 0, 0).round(2)
+    # Thu thập TỔNG và TỔNG (Cọc Chốt) của từng đợt và của TỔNG CỘNG
+    dot_totals = {}
+    grand_total_val = 0.0
+    grand_total_coc = 0.0
+    coc_tong_col = f"TỔNG{COC_COL_SUFFIX}"
     
-    return df_result
+    for _, r in df_result.iterrows():
+        dot_str = str(r['ĐỢT HỌC THỬ'])
+        if dot_str == 'TỔNG CỘNG':
+            grand_total_val = float(r.get('TỔNG', 0.0))
+            grand_total_coc = float(r.get(coc_tong_col, 0.0))
+        elif dot_str.startswith('TỔNG '):
+            dot_name = dot_str[len('TỔNG '):]
+            dot_totals[dot_name] = {
+                'total': float(r.get('TỔNG', 0.0)),
+                'coc_total': float(r.get(coc_tong_col, 0.0)),
+            }
+
+    target_cols = AGE_GROUPS + REPORT_3_CONSOLIDATED_COLUMNS
+    formatted_rows = []
+
+    for _, row in df_result.iterrows():
+        new_row = {
+            'Thời gian xuất data': row.get('Thời gian xuất data', ''),
+            'ĐỢT HỌC THỬ': row.get('ĐỢT HỌC THỬ', ''),
+            'Nguồn': row.get('Nguồn', ''),
+        }
+        dot_str = str(row.get('ĐỢT HỌC THỬ', ''))
+        row_total = float(row.get('TỔNG', 0.0))
+        row_coc_total = float(row.get(coc_tong_col, 0.0))
+
+        # Format 7 nhóm tuổi + 3 cột gộp
+        for col in target_cols:
+            col_coc = f"{col}{COC_COL_SUFFIX}"
+            val = row.get(col, 0.0)
+            coc_val = row.get(col_coc, 0.0)
+            new_row[col] = _format_r3_excel_cell(val, row_total, coc_val, row_coc_total)
+
+        # Format cột TỔNG
+        if dot_str == 'TỔNG CỘNG':
+            t_denom = row_total
+            c_denom = row_coc_total
+        elif dot_str.startswith('TỔNG '):
+            t_denom = grand_total_val
+            c_denom = grand_total_coc
+        else:
+            # Dòng chi tiết: theo đợt tương ứng
+            dot_info = dot_totals.get(dot_str, {'total': 0.0, 'coc_total': 0.0})
+            t_denom = dot_info['total']
+            c_denom = dot_info['coc_total']
+
+        new_row['TỔNG'] = _format_r3_excel_cell(row_total, t_denom, row_coc_total, c_denom)
+        formatted_rows.append(new_row)
+
+    return pd.DataFrame(formatted_rows)[out_cols]
+
+
+# ==========================================
+# TÍNH TOÁN BÁO CÁO 4: NGUỒN ONL / OFF / TỔNG
+# ==========================================
+
+REPORT_4_COLS = [
+    'Thời gian xuất data',
+    'Nguồn',
+    'Tổng data',
+    'Bill cọc',
+    'Data/Bill',
+    'Bill/Data (%)',
+]
+
+
+def _calc_r4_metrics(df_table, fetch_time):
+    """Bổ sung Thời gian xuất data và tính Data/Bill, Bill/Data(%)."""
+    df = df_table.copy()
+    if 'Thời gian xuất data' not in df.columns:
+        df.insert(0, 'Thời gian xuất data', fetch_time)
+    else:
+        df['Thời gian xuất data'] = fetch_time
+
+    tot = pd.to_numeric(df['Tổng data'], errors='coerce').fillna(0.0)
+    bill = pd.to_numeric(df['Bill cọc'], errors='coerce').fillna(0.0)
+
+    df['Tổng data'] = tot.round(2)
+    df['Bill cọc'] = bill.round(2)
+    df['Data/Bill'] = (tot / bill.where(bill > 0)).fillna(0.0).round(2)
+    df['Bill/Data (%)'] = (bill / tot.where(tot > 0) * 100).fillna(0.0).round(2)
+
+    return df[REPORT_4_COLS]
+
+
+def build_report_4_tables(df_filtered, fetch_time):
+    """
+    Trả về dict {'onl': df, 'off': df, 'tong': df} — mỗi df theo REPORT_4_COLS.
+    Tổng hợp toàn bộ data trong bộ lọc (không group theo Đợt học thử).
+    Hàm pure pandas, không phụ thuộc st.session_state (thuận tiện kiểm thử).
+    """
+    if df_filtered.empty:
+        empty = pd.DataFrame(columns=REPORT_4_COLS)
+        return {'onl': empty, 'off': empty.copy(), 'tong': empty.copy()}
+
+    df_calc = df_filtered.copy()
+
+    # Tương thích phiên cũ: tự sinh cột trọng số BC4 nếu thiếu
+    if "_report_4_sources_with_weights" not in df_calc.columns:
+        source_details = df_calc.get(
+            "account_source_details",
+            pd.Series(index=df_calc.index, dtype=object),
+        )
+        df_calc["_report_4_sources_with_weights"] = source_details.apply(
+            expand_report_4_sources_with_weights
+        )
+
+    # Đảm bảo có cột chỉ báo Data_coc_chot
+    if "Data_coc_chot" not in df_calc.columns:
+        relation_series = df_calc.get("Mối quan hệ", pd.Series(index=df_calc.index, dtype=object)).fillna("")
+        df_calc["Data_coc_chot"] = relation_series.isin(COC_CHOT_LABELS).astype(int)
+
+    # Expand từng bản ghi theo nguồn khớp và trọng số
+    records = []
+    for _, row in df_calc.iterrows():
+        is_coc = int(row.get("Data_coc_chot", 0))
+        sources = row.get("_report_4_sources_with_weights", [])
+        if isinstance(sources, list):
+            for s_key, weight in sources:
+                parts = s_key.split("::", 1)
+                if len(parts) == 2:
+                    records.append({
+                        "Table": parts[0],
+                        "Nguồn": parts[1],
+                        "Weight": float(weight),
+                        "BillWeight": float(weight) * is_coc,
+                    })
+
+    rec_df = pd.DataFrame(records)
+
+    # Khung dòng cố định theo thứ tự nghiệp vụ
+    template = pd.DataFrame({'Nguồn': REPORT_4_ONL_ROWS})
+    off_template = pd.DataFrame({'Nguồn': REPORT_4_OFF_ROWS})
+
+    # 1. Bảng Onl (12 dòng cố định)
+    if not rec_df.empty and (rec_df['Table'] == 'onl').any():
+        onl_grouped = (
+            rec_df[rec_df['Table'] == 'onl']
+            .groupby('Nguồn', as_index=False)[['Weight', 'BillWeight']]
+            .sum()
+        )
+        onl_res = template.merge(onl_grouped, on='Nguồn', how='left')
+    else:
+        onl_res = template.copy()
+        onl_res['Weight'] = 0.0
+        onl_res['BillWeight'] = 0.0
+
+    onl_res['Weight'] = pd.to_numeric(onl_res.get('Weight'), errors='coerce').fillna(0.0)
+    onl_res['BillWeight'] = pd.to_numeric(onl_res.get('BillWeight'), errors='coerce').fillna(0.0)
+
+    # 2. Bảng Off (6 dòng cố định)
+    if not rec_df.empty and (rec_df['Table'] == 'off').any():
+        off_grouped = (
+            rec_df[rec_df['Table'] == 'off']
+            .groupby('Nguồn', as_index=False)[['Weight', 'BillWeight']]
+            .sum()
+        )
+        off_res = off_template.merge(off_grouped, on='Nguồn', how='left')
+    else:
+        off_res = off_template.copy()
+        off_res['Weight'] = 0.0
+        off_res['BillWeight'] = 0.0
+
+    off_res['Weight'] = pd.to_numeric(off_res.get('Weight'), errors='coerce').fillna(0.0)
+    off_res['BillWeight'] = pd.to_numeric(off_res.get('BillWeight'), errors='coerce').fillna(0.0)
+
+    # 3. Bảng Tổng nguồn: 12 dòng như Onl, Facebook TCn = Onl FB TCn + Off FB TCn, Google TCn = Onl GG TCn
+    combined = pd.concat([onl_res, off_res], ignore_index=True)
+    tong_grouped = (
+        combined.groupby('Nguồn', as_index=False)[['Weight', 'BillWeight']]
+        .sum()
+    )
+    tong_res = template.merge(tong_grouped, on='Nguồn', how='left')
+    tong_res['Weight'] = pd.to_numeric(tong_res.get('Weight'), errors='coerce').fillna(0.0)
+    tong_res['BillWeight'] = pd.to_numeric(tong_res.get('BillWeight'), errors='coerce').fillna(0.0)
+
+    # Đổi tên cột chuẩn hóa và tính toán tỷ lệ
+    onl_res = onl_res.rename(columns={'Weight': 'Tổng data', 'BillWeight': 'Bill cọc'})
+    off_res = off_res.rename(columns={'Weight': 'Tổng data', 'BillWeight': 'Bill cọc'})
+    tong_res = tong_res.rename(columns={'Weight': 'Tổng data', 'BillWeight': 'Bill cọc'})
+
+    return {
+        'onl': _calc_r4_metrics(onl_res, fetch_time),
+        'off': _calc_r4_metrics(off_res, fetch_time),
+        'tong': _calc_r4_metrics(tong_res, fetch_time),
+    }
+
+
+def compute_report_4(df_filtered):
+    """Tính toán Báo cáo 4 từ DataFrame đã lọc (giao diện tương thích st.session_state)."""
+    if df_filtered.empty:
+        empty = pd.DataFrame(columns=REPORT_4_COLS)
+        return {'onl': empty, 'off': empty.copy(), 'tong': empty.copy()}
+    try:
+        fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
+    except Exception:
+        fetch_time = format_fetch_time()
+    return build_report_4_tables(df_filtered, fetch_time)
+
+
+def aggregate_report_4_rows(df_rows, time_val, nguon_val):
+    """Tổng data/Bill cọc (round 2) + tính lại Data/Bill, Bill/Data(%) từ tổng — cho dòng TỔNG CỘNG."""
+    tot = round(float(df_rows['Tổng data'].sum()), 2) if 'Tổng data' in df_rows and not df_rows.empty else 0.0
+    bill = round(float(df_rows['Bill cọc'].sum()), 2) if 'Bill cọc' in df_rows and not df_rows.empty else 0.0
+    data_per_bill = round(tot / bill, 2) if bill > 0 else 0.0
+    bill_per_data = round(bill / tot * 100, 2) if tot > 0 else 0.0
+    return {
+        'Thời gian xuất data': time_val,
+        'Nguồn': nguon_val,
+        'Tổng data': tot,
+        'Bill cọc': bill,
+        'Data/Bill': data_per_bill,
+        'Bill/Data (%)': bill_per_data,
+    }
+
+
+def prepare_excel_report_4(df_table):
+    """Xây dựng DataFrame Excel hoàn chỉnh cho Báo cáo 4 với dòng tổng cộng."""
+    if df_table.empty:
+        return df_table
+    df_excel = df_table.copy()
+    time_val = df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else ''
+    total_row = aggregate_report_4_rows(df_excel, time_val, 'TỔNG CỘNG')
+    return pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)

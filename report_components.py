@@ -549,6 +549,50 @@ def render_excel_download(df_excel, sheet_name, file_name, button_label):
     )
 
 
+def get_excel_bytes_multi_sheets(sheets, file_name):
+    """
+    Giữ một file gần nhất mỗi báo cáo nhiều sheet trong phiên.
+    sheets: list[(sheet_name, df)]. Format float '0.00' mọi sheet.
+    """
+    cache = st.session_state.setdefault('_excel_download_cache', {})
+    key = file_name
+    cached = cache.get(key)
+    if cached is not None:
+        cached_sheets = cached.get('sheets', [])
+        if len(cached_sheets) == len(sheets) and all(
+            name == c_name and df.equals(c_df)
+            for (name, df), (c_name, c_df) in zip(sheets, cached_sheets)
+        ):
+            return cached['data']
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        for sheet_name, df_sheet in sheets:
+            df_sheet.to_excel(writer, sheet_name=sheet_name, index=False)
+            ws = writer.sheets[sheet_name]
+            for row in ws.iter_rows(min_row=2):
+                for cell in row:
+                    if isinstance(cell.value, float):
+                        cell.number_format = '0.00'
+    data = buffer.getvalue()
+    cache[key] = {
+        'sheets': [(name, df.copy()) for name, df in sheets],
+        'data': data,
+    }
+    return data
+
+
+def render_excel_download_multi_sheets(sheets, file_name, button_label):
+    """1 nút download cho workbook nhiều sheet."""
+    st.download_button(
+        label=button_label,
+        data=get_excel_bytes_multi_sheets(sheets, file_name),
+        file_name=file_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+
 def assign_dot_manual_to_first_row(df, dot_manual_df, columns, type_map=None):
     """
     Phân bổ giá trị nhập tay theo đợt vào dòng đầu tiên của mỗi đợt trong DataFrame chính.
