@@ -13,8 +13,10 @@ import json
 from config import get_api_key, get_url_base, get_headers
 from api_client import get_account_types, get_account_sources, get_users, fetch_accounts_with_progress
 from data_processing import expand_source_ids, build_filtering_conditions, transform_dataframe, build_department_options, build_user_ids_by_departments
-from reports import add_indicator_columns, compute_report_1, compute_report_2, compute_report_3, render_report_1, render_report_2, render_report_3
+from reports import render_report_1, render_report_2, render_report_3
 from time_utils import get_vn_now, format_fetch_time
+from manual_input_repository import get_repository
+from report_calculations import get_cached_base_reports
 
 # ==========================================
 # KHỞI TẠO CẤU HÌNH
@@ -175,6 +177,7 @@ if submitted and not is_currently_loading:
             df = transform_dataframe(df, src_ids, type_ids, account_types_list, users_list)
 
             st.session_state["raw_df"] = df
+            st.session_state["raw_revision"] = st.session_state.get("raw_revision", 0) + 1
             st.session_state["fetch_time"] = format_fetch_time()
             st.session_state["filtered_src_ids"] = src_ids
             st.session_state["filtered_type_ids"] = type_ids
@@ -208,21 +211,11 @@ if st.session_state["raw_df"] is not None:
         help="Chọn một hoặc nhiều đợt học thử để tính toán lại báo cáo bên dưới."
     )
 
-    # Lọc dữ liệu theo đợt học thử đã chọn
-    if selected_sessions:
-        df_filtered = df_raw[df_raw["ĐỢT HỌC THỬ"].isin(selected_sessions)].copy()
-    else:
-        df_filtered = df_raw.copy()
-
-    # Bắt đầu tính toán báo cáo từ dữ liệu đã lọc
+    # Cache riêng từng phiên, làm mới khi tải CRM hoặc đổi đợt.
     with st.spinner("Đang tự động xử lý các luồng báo cáo..."):
-        # Thêm các cột chỉ báo
-        df_filtered = add_indicator_columns(df_filtered)
-
-        # Tính toán 3 báo cáo
-        result = compute_report_1(df_filtered)
-        result_2 = compute_report_2(df_filtered)
-        result_3 = compute_report_3(df_filtered)
+        result, result_2, result_3 = get_cached_base_reports(
+            df_raw, selected_sessions, st.session_state.get("raw_revision", 0)
+        )
 
     st.success("Tạo báo cáo thành công!")
 
@@ -233,12 +226,13 @@ if st.session_state["raw_df"] is not None:
         "👥 Báo cáo 3: Thống kê theo Nguồn & Độ Tuổi"
     ])
 
+    repo = get_repository()
+
     with tab1:
-        render_report_1(result)
+        render_report_1(result, repository=repo)
 
     with tab2:
-        render_report_2(result_2)
+        render_report_2(result_2, repository=repo)
 
     with tab3:
         render_report_3(result_3)
-

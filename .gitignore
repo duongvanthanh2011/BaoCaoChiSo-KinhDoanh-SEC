@@ -5,3 +5,5 @@
 **/.venv
 **/app_demo.py
 *.log
+*.sql
+*.md

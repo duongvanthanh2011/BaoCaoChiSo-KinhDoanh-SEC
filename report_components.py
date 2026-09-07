@@ -11,6 +11,26 @@ import streamlit as st
 from st_aggrid import AgGrid
 from st_aggrid.grid_options_builder import GridOptionsBuilder
 
+from manual_input_schema import (
+    REPORT_1_CODE,
+    REPORT_2_CODE,
+    get_widget_key,
+    get_r2_duplicate_code,
+)
+from manual_input_state import (
+    on_widget_change,
+    get_draft_value,
+    set_draft_value,
+    get_changed_values,
+    has_any_draft_changes,
+    get_session_entry,
+    sync_manual_widgets,
+    apply_saved_snapshot,
+
+    set_loaded_baseline,
+)
+from time_utils import get_vn_now
+
 
 DOT_COLUMN = 'ĐỢT HỌC THỬ'
 
@@ -67,9 +87,19 @@ def hash_dot_manual_df(dot_manual_df):
     return hashlib.md5(payload.encode('utf-8')).hexdigest()[:12]
 
 
-def render_dot_manual_inputs(title, state_key, unique_dots, number_columns, input_key_prefixes, float_columns=None, display_labels=None):
+def render_dot_manual_inputs(
+    title,
+    state_key,
+    unique_dots,
+    number_columns,
+    input_key_prefixes,
+    float_columns=None,
+    display_labels=None,
+    report_code=None,
+):
     """
     Render bảng nhập số theo từng đợt học thử với định dạng và chiều cao đồng bộ chuẩn xác.
+    Được tích hợp với bản nháp (draft) trong phiên, tự động đồng bộ khi người dùng gõ số.
 
     Trả về:
     - manual_df: DataFrame gồm DOT_COLUMN và các number_columns.
@@ -107,35 +137,58 @@ def render_dot_manual_inputs(title, state_key, unique_dots, number_columns, inpu
         row_data = {DOT_COLUMN: dot_name}
         for idx, col in enumerate(number_columns, start=1):
             key_prefix = input_key_prefixes.get(col, f"{state_key}_{idx}")
-            input_key = f"{key_prefix}_{dot_hash}"
+            input_code = key_prefix
             is_float = col in float_cols_set
-            
-            if is_float:
-                current_value = float(manual_by_dot.at[dot_name, col]) if dot_name in manual_by_dot.index else 0.0
-                if input_key not in st.session_state:
-                    st.session_state[input_key] = current_value
 
-                row_data[col] = row_cols[idx].number_input(
+            if report_code:
+                input_key = get_widget_key(report_code, input_code, str(dot_name))
+                draft_val = get_draft_value(report_code, str(dot_name), input_code, 0)
+                if input_key not in st.session_state:
+                    st.session_state[input_key] = float(draft_val) if is_float else int(draft_val)
+            else:
+                input_key = f"{key_prefix}_{dot_hash}"
+                if is_float:
+                    current_value = float(manual_by_dot.at[dot_name, col]) if dot_name in manual_by_dot.index else 0.0
+                    if input_key not in st.session_state:
+                        st.session_state[input_key] = current_value
+                else:
+                    current_value = int(manual_by_dot.at[dot_name, col]) if dot_name in manual_by_dot.index else 0
+                    if input_key not in st.session_state:
+                        st.session_state[input_key] = current_value
+
+            on_change_kw = {}
+            if report_code:
+                on_change_kw = {
+                    "on_change": on_widget_change,
+                    "args": (report_code, str(dot_name), input_code, input_key),
+                }
+
+            if is_float:
+                val = row_cols[idx].number_input(
                     col,
                     min_value=0.0,
                     step=0.1,
                     format="%.2f",
                     key=input_key,
                     label_visibility="collapsed",
+                    **on_change_kw,
                 )
+                row_data[col] = val
+                if report_code:
+                    set_draft_value(report_code, str(dot_name), input_code, int(val))
             else:
-                current_value = int(manual_by_dot.at[dot_name, col]) if dot_name in manual_by_dot.index else 0
-                if input_key not in st.session_state:
-                    st.session_state[input_key] = current_value
-
-                row_data[col] = row_cols[idx].number_input(
+                val = row_cols[idx].number_input(
                     col,
                     min_value=0,
                     step=1,
                     format="%d",
                     key=input_key,
                     label_visibility="collapsed",
+                    **on_change_kw,
                 )
+                row_data[col] = val
+                if report_code:
+                    set_draft_value(report_code, str(dot_name), input_code, int(val))
 
         manual_rows.append(row_data)
 
@@ -242,10 +295,10 @@ def render_dot_nguon_manual_inputs(title, state_key, unique_pairs, number_column
     return manual_df, hash_dot_manual_df(manual_df)
 
 
-def render_dot_nguon_matrix_inputs(title, state_key, unique_dots, unique_nguons, key_prefix="r2_trung"):
+def render_dot_nguon_matrix_inputs(title, state_key, unique_dots, unique_nguons, key_prefix="r2_trung", report_code=REPORT_2_CODE):
     """
     Render bảng nhập Data trùng dạng ma trận (mỗi dòng là 1 Đợt, các cột là các Nguồn).
-    Giúp giao diện cực kỳ gọn gàng, giảm 70% chiều dài dọc.
+    Tích hợp với bản nháp (draft) trong phiên, tự động đồng bộ khi gõ số.
     
     Trả về:
     - manual_df: DataFrame gồm ['ĐỢT HỌC THỬ', 'Nguồn', 'Data trùng']
@@ -273,12 +326,23 @@ def render_dot_nguon_matrix_inputs(title, state_key, unique_dots, unique_nguons,
         row_cols[0].markdown(f"<div style='height: 38px; display: flex; align-items: center; font-size: 13px; font-weight: 500;'>{dot_name}</div>", unsafe_allow_html=True)
         
         for idx, nguon in enumerate(unique_nguons, start=1):
-            nguon_hash = hashlib.md5(str(nguon).encode("utf-8")).hexdigest()[:6]
-            input_key = f"{key_prefix}_{dot_hash}_{nguon_hash}"
-            
-            current_val = st.session_state.get(state_key, {}).get((str(dot_name), str(nguon)), 0)
-            if input_key not in st.session_state:
-                st.session_state[input_key] = int(current_val)
+            if report_code:
+                input_code = get_r2_duplicate_code(nguon)
+                input_key = get_widget_key(report_code, input_code, str(dot_name))
+                draft_val = get_draft_value(report_code, str(dot_name), input_code, 0)
+                if input_key not in st.session_state:
+                    st.session_state[input_key] = int(draft_val)
+                on_change_kw = {
+                    "on_change": on_widget_change,
+                    "args": (report_code, str(dot_name), input_code, input_key),
+                }
+            else:
+                nguon_hash = hashlib.md5(str(nguon).encode("utf-8")).hexdigest()[:6]
+                input_key = f"{key_prefix}_{dot_hash}_{nguon_hash}"
+                current_val = st.session_state.get(state_key, {}).get((str(dot_name), str(nguon)), 0)
+                if input_key not in st.session_state:
+                    st.session_state[input_key] = int(current_val)
+                on_change_kw = {}
                 
             val = row_cols[idx].number_input(
                 f"{dot_name}_{nguon}",
@@ -286,9 +350,13 @@ def render_dot_nguon_matrix_inputs(title, state_key, unique_dots, unique_nguons,
                 step=1,
                 format="%d",
                 key=input_key,
-                label_visibility="collapsed"
+                label_visibility="collapsed",
+                **on_change_kw,
             )
             
+            if report_code:
+                set_draft_value(report_code, str(dot_name), input_code, int(val))
+
             st.session_state[state_key][(str(dot_name), str(nguon))] = val
             manual_rows.append({
                 DOT_COLUMN: dot_name,
@@ -298,6 +366,113 @@ def render_dot_nguon_matrix_inputs(title, state_key, unique_dots, unique_nguons,
             
     manual_df = pd.DataFrame(manual_rows)
     return manual_df, hash_dot_manual_df(manual_df)
+
+
+# ==========================================
+# CÁC COMPONENT HÀNH ĐỘNG: LƯU VÀ TẢI LẠI
+# ==========================================
+
+def reload_manual_inputs(report_code, dots, displayed_codes_by_dot, repository):
+    """Fetch hết trước khi thay trạng thái; gọi trước các input của báo cáo."""
+    latest = repository.load_latest_batch(report_code, dots)
+    for dot in dots:
+        entry = get_session_entry(report_code, dot)
+        # Ghi nhớ key cũ để reset cả key không còn trong server.
+        codes = set(displayed_codes_by_dot.get(dot, [])) | set(entry["draft"]) | set(entry["baseline"])
+        rec = latest.get(dot, {})
+        set_loaded_baseline(report_code, dot, rec.get("version_no", 0),
+                            rec.get("metric_value", {}), discard_edits=True)
+        sync_manual_widgets(report_code, dot, codes)
+
+
+def render_report_actions_bar(report_code, unique_dots, displayed_codes_by_dot, repository=None):
+    """Nút lưu và tải lại đặt trước input để đồng bộ widget an toàn."""
+    if not unique_dots:
+        return
+    dots = list(dict.fromkeys(str(d) for d in unique_dots))
+    scope = tuple(sorted(dots))
+    confirm_key = f"confirm_reload_{report_code}"
+    notice_key = f"manual_notice_{report_code}"
+    for level, message in st.session_state.pop(notice_key, []):
+        getattr(st, level)(message)
+    # Không xác nhận nhầm phạm vi nếu người dùng đổi bộ lọc giữa chừng.
+    if st.session_state.get(confirm_key) != scope:
+        st.session_state.pop(confirm_key, None)
+
+    configured = bool(repository and repository.is_configured())
+    loaded = all(get_session_entry(report_code, d)["load_status"] == "loaded" for d in dots)
+    dirty = has_any_draft_changes(report_code, dots)
+    col_save, col_reload, col_status = st.columns([2.0, 2.5, 5.5])
+    with col_save:
+        save_btn = st.button("💾 Lưu dữ liệu", key=f"btn_save_{report_code}", type="primary",
+                             use_container_width=True, disabled=not configured or not loaded,
+                             help="Lưu các ô đã sửa đang hiển thị; giữ số chưa lưu của nguồn đang ẩn.")
+    with col_reload:
+        reload_btn = st.button("🔄 Tải lại dữ liệu đã lưu", key=f"btn_reload_{report_code}",
+                               use_container_width=True, disabled=not configured)
+    with col_status:
+        if not configured:
+            st.caption("Chưa kết nối lưu trữ; số nhập chỉ ở trong phiên.")
+        elif not loaded:
+            st.caption("Chưa tải đủ dữ liệu đã lưu. Bấm Tải lại trước khi lưu.")
+        elif dirty:
+            st.caption("● Có thay đổi chưa lưu, có thể gồm nguồn đang ẩn.")
+        else:
+            st.caption("✓ Không có thay đổi chưa lưu trong các đợt đang chọn.")
+
+    do_reload = False
+    if reload_btn:
+        if dirty:
+            st.session_state[confirm_key] = scope
+        else:
+            do_reload = True
+    if st.session_state.get(confirm_key) == scope:
+        st.warning("Tải lại sẽ thay thế số chưa lưu trong các đợt đang chọn, kể cả nguồn đang ẩn.")
+        yes, no = st.columns(2)
+        with yes:
+            if st.button("✅ Xác nhận tải lại", key=f"btn_confirm_ok_{report_code}"):
+                do_reload = True
+        with no:
+            if st.button("❌ Hủy", key=f"btn_confirm_cancel_{report_code}"):
+                st.session_state.pop(confirm_key, None)
+                st.rerun()
+    if do_reload:
+        try:
+            reload_manual_inputs(report_code, dots, displayed_codes_by_dot, repository)
+        except Exception:
+            # Không thay baseline, draft hoặc widget khi request thất bại.
+            st.error("Không tải lại được dữ liệu. Số đang nhập vẫn được giữ; hãy kiểm tra kết nối/migration và thử lại.")
+        else:
+            st.session_state.pop(confirm_key, None)
+            st.session_state[notice_key] = [("success", "Đã tải lại dữ liệu mới nhất.")]
+            st.rerun()
+
+    if save_btn and configured and loaded:
+        saved, unchanged, failed = [], [], []
+        for dot in dots:
+            codes = displayed_codes_by_dot.get(dot, [])
+            changed = get_changed_values(report_code, dot, codes)
+            if not changed:
+                unchanged.append(dot)
+                continue
+            try:
+                res = repository.save_changes(report_code, dot, changed)
+                # Cả saved=False cũng trả baseline mới nhất từ máy chủ.
+                apply_saved_snapshot(report_code, dot, res["version_no"], res["metric_value"], changed)
+                sync_manual_widgets(report_code, dot, codes)
+                (saved if res["saved"] else unchanged).append(dot)
+            except Exception:
+                failed.append(dot)
+        notices = []
+        if saved or unchanged:
+            notices.append(("success", f"Đã lưu {len(saved)} đợt; {len(unchanged)} đợt không thay đổi. "
+                            f"({get_vn_now().strftime('%H:%M:%S')})"))
+        if failed:
+            notices.append(("error", "Chưa xác nhận được kết quả lưu cho: " + ", ".join(failed)
+                            + ". Bản nháp được giữ; kiểm tra kết nối/migration và đối chiếu dữ liệu trước khi lưu lại."))
+        st.session_state[notice_key] = notices
+        st.session_state.pop(confirm_key, None)
+        st.rerun()
 
 
 # ==========================================
@@ -336,6 +511,25 @@ def render_aggrid_report(df, gb, pinned_row=None, grid_key="grid_report"):
     )
 
 
+def get_excel_bytes(df_excel, sheet_name, file_name):
+    """Giữ một file gần nhất mỗi báo cáo trong phiên, không chia sẻ dữ liệu giữa người dùng."""
+    cache = st.session_state.setdefault('_excel_download_cache', {})
+    key = (sheet_name, file_name)
+    cached = cache.get(key)
+    if cached is not None and cached['frame'].equals(df_excel):
+        return cached['data']
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df_excel.to_excel(writer, sheet_name=sheet_name, index=False)
+        for row in writer.sheets[sheet_name].iter_rows(min_row=2):
+            for cell in row:
+                if isinstance(cell.value, float):
+                    cell.number_format = '0.00'
+    data = buffer.getvalue()
+    cache[key] = {'frame': df_excel.copy(), 'data': data}
+    return data
+
+
 def render_excel_download(df_excel, sheet_name, file_name, button_label):
     """
     Render nút download Excel chuẩn hóa cho mọi báo cáo.
@@ -347,19 +541,9 @@ def render_excel_download(df_excel, sheet_name, file_name, button_label):
         file_name: Tên file Excel khi download.
         button_label: Nhãn nút download.
     """
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        # Giữ giá trị thật trong file để SUM không sai do làm tròn; chỉ định dạng hiển thị 2 số lẻ.
-        df_excel.to_excel(writer, sheet_name=sheet_name, index=False)
-        worksheet = writer.sheets[sheet_name]
-        for row in worksheet.iter_rows(min_row=2):
-            for cell in row:
-                if isinstance(cell.value, float):
-                    cell.number_format = '0.00'
-
     st.download_button(
         label=button_label,
-        data=buffer.getvalue(),
+        data=get_excel_bytes(df_excel, sheet_name, file_name),
         file_name=file_name,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )

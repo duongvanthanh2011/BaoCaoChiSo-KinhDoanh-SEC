@@ -28,7 +28,9 @@ from report_components import (
     render_dot_nguon_matrix_inputs,
     render_aggrid_report,
     render_excel_download,
-    assign_dot_manual_to_first_row
+    assign_dot_manual_to_first_row,
+    render_report_actions_bar,
+
 )
 from report_calculations import (
     add_indicator_columns, 
@@ -44,6 +46,19 @@ from report_calculations import (
     REPORT_2_ADVISOR_COLUMN,
     REPORT_2_AVERAGE_COLUMN,
 )
+from manual_input_schema import (
+    REPORT_1_CODE,
+    REPORT_2_CODE,
+    REPORT_1_COL_TO_CODE,
+    REPORT_2_COL_TO_CODE,
+    get_r2_duplicate_code,
+)
+from manual_input_state import (
+    get_session_entry,
+    set_loaded_baseline,
+    mark_load_error,
+)
+from manual_input_repository import get_repository
 
 # Re-export để app.py import trực tiếp không bị lỗi
 __all__ = [
@@ -57,8 +72,11 @@ __all__ = [
 ]
 
 
-def render_report_1(result):
+def render_report_1(result, repository=None):
     """Hiển thị Báo cáo 1 bằng bảng phân cấp AgGrid hỗ trợ chỉnh sửa và tính toán động."""
+    if repository is None:
+        repository = get_repository()
+
     st.subheader("Bản xem trước: Báo cáo theo Đợt học thử & Người phụ trách")
     
     state_key = "report_1_edited_df"
@@ -66,10 +84,30 @@ def render_report_1(result):
 
     # Báo cáo 1 không còn nhập tay trực tiếp trong AgGrid, nên luôn dùng số liệu mới nhất.
     df_to_show = result.copy()
-    
-    # ====== BẢNG NHẬP TAY CỌC KHÁC & TỔNG CỌC HỌC THỬ THEO ĐỢT ======
     unique_dots = sorted(df_to_show['ĐỢT HỌC THỬ'].unique().tolist())
-    
+    unique_dots_str = [str(d) for d in unique_dots]
+
+    # ====== TỰ ĐỘNG TẢI DỮ LIỆU TỪ SUPABASE NẾU CHƯA CÓ TRONG PHIÊN ======
+    unloaded_dots = [d for d in unique_dots_str if get_session_entry(REPORT_1_CODE, d)["load_status"] == "unloaded"]
+    if unloaded_dots and repository and repository.is_configured():
+        try:
+            latest_map = repository.load_latest_batch(REPORT_1_CODE, unloaded_dots)
+            for d in unloaded_dots:
+                rec = latest_map.get(d, {})
+                set_loaded_baseline(REPORT_1_CODE, d, rec.get("version_no", 0), rec.get("metric_value", {}))
+        except Exception as e:
+            for d in unloaded_dots:
+                mark_load_error(REPORT_1_CODE, d, str(e))
+            st.warning(f"⚠️ Không thể tải dữ liệu đã lưu từ máy chủ: {e}. Đang sử dụng dữ liệu phiên.")
+
+    # ====== THANH TÁC VỤ (LƯU DỮ LIỆU & TẢI LẠI) ======
+    displayed_codes_by_dot = {
+        d: ["r1_other_deposit", "r1_trial_deposit_total"]
+        for d in unique_dots_str
+    }
+    render_report_actions_bar(REPORT_1_CODE, unique_dots, displayed_codes_by_dot, repository=repository)
+
+    # ====== BẢNG NHẬP TAY CỌC KHÁC & TỔNG CỌC HỌC THỬ THEO ĐỢT ======
     with manual_input_expander(
         "✏️ Bảng nhập số liệu thực tế (Cọc khác, Tổng cọc học thử)"
     ):
@@ -78,12 +116,11 @@ def render_report_1(result):
             dot_manual_key,
             unique_dots,
             ['Cọc Khác', 'Tổng Cọc Học Thử'],
-            {
-                'Cọc Khác': 'report_1_coc_khac',
-                'Tổng Cọc Học Thử': 'report_1_tong_coc_ht',
-            },
+            REPORT_1_COL_TO_CODE,
+            report_code=REPORT_1_CODE,
         )
-    
+
+
     # Phân bổ giá trị nhập tay vào dòng đầu tiên mỗi đợt (để aggFunc sum hoạt động đúng ở group footer)
     df_to_show = assign_dot_manual_to_first_row(
         df_to_show, dot_manual_df,
@@ -142,8 +179,12 @@ def render_report_1(result):
         button_label='📥 Tải xuống Báo cáo 1 (Excel)'
     )
 
-def render_report_2(result_2):
+
+def render_report_2(result_2, repository=None):
     """Hiển thị Báo cáo 2: Theo Đợt học thử & Nguồn khách hàng."""
+    if repository is None:
+        repository = get_repository()
+
     st.subheader("Bản xem trước: Báo cáo theo Đợt học thử & Nguồn khách hàng")
 
     state_key = "report_2_edited_df"
@@ -151,15 +192,37 @@ def render_report_2(result_2):
     dot_nguon_manual_key = "report_2_dot_nguon_manual"
 
     df_to_show = result_2.copy()
-
-    # ====== GIAO DIỆN NHẬP LIỆU GỌN GÀNG: EXPANDER + 2 CỘT SONG SONG ======
     unique_dots = sorted(df_to_show['ĐỢT HỌC THỬ'].unique().tolist())
+    unique_dots_str = [str(d) for d in unique_dots]
     present_nguons = df_to_show['Nguồn'].unique().tolist()
     preferred_order = ["Trường Chinh", "Cầu Giấy", "Khác"]
     unique_nguons = [ng for ng in preferred_order if ng in present_nguons] + [ng for ng in present_nguons if ng not in preferred_order]
     if not unique_nguons:
         unique_nguons = preferred_order
 
+    # ====== TỰ ĐỘNG TẢI DỮ LIỆU TỪ SUPABASE NẾU CHƯA CÓ TRONG PHIÊN ======
+    unloaded_dots = [d for d in unique_dots_str if get_session_entry(REPORT_2_CODE, d)["load_status"] == "unloaded"]
+    if unloaded_dots and repository and repository.is_configured():
+        try:
+            latest_map = repository.load_latest_batch(REPORT_2_CODE, unloaded_dots)
+            for d in unloaded_dots:
+                rec = latest_map.get(d, {})
+                set_loaded_baseline(REPORT_2_CODE, d, rec.get("version_no", 0), rec.get("metric_value", {}))
+        except Exception as e:
+            for d in unloaded_dots:
+                mark_load_error(REPORT_2_CODE, d, str(e))
+            st.warning(f"⚠️ Không thể tải dữ liệu đã lưu từ máy chủ: {e}. Đang sử dụng dữ liệu phiên.")
+
+    # ====== THANH TÁC VỤ (LƯU DỮ LIỆU & TẢI LẠI) ======
+    displayed_codes_by_dot = {}
+    for d in unique_dots_str:
+        displayed_codes_by_dot[d] = (
+            [get_r2_duplicate_code(ng) for ng in unique_nguons]
+            + ['r2_zalo_group_data', 'r2_ordered_data', 'r2_active_advisor_count']
+        )
+    render_report_actions_bar(REPORT_2_CODE, unique_dots, displayed_codes_by_dot, repository=repository)
+
+    # ====== GIAO DIỆN NHẬP LIỆU GỌN GÀNG: EXPANDER + 2 CỘT SONG SONG ======
     with manual_input_expander(
         "✏️ Bảng nhập số liệu thực tế (Data trùng, Zalo, Order, Số CVHT)",
         column_spec=2,
@@ -172,7 +235,8 @@ def render_report_2(result_2):
                 dot_nguon_manual_key,
                 unique_dots,
                 unique_nguons,
-                key_prefix="r2_trung"
+                key_prefix="r2_trung",
+                report_code=REPORT_2_CODE,
             )
 
         with col_input_2:
@@ -182,28 +246,24 @@ def render_report_2(result_2):
                 dot_manual_key,
                 unique_dots,
                 dot_manual_cols,
-                {
-                    'Data vào nhóm Zalo': 'r2_data_zalo',
-                    'Data order': 'r2_data_order',
-                    REPORT_2_ADVISOR_COLUMN: 'r2_so_cvht_di_lam',
-                },
+                REPORT_2_COL_TO_CODE,
                 display_labels={
                     'Data vào nhóm Zalo': 'Vào nhóm Zalo',
                     'Data order': 'Data order',
                     REPORT_2_ADVISOR_COLUMN: REPORT_2_ADVISOR_COLUMN,
-                }
+                },
+                report_code=REPORT_2_CODE,
             )
 
     manual_hash = f"{hash_nguon}_{hash_dot}"
 
+
     # Cập nhật Data trùng cho từng (Đợt, Nguồn)
     df_to_show['Data trùng'] = 0
     if not dot_nguon_manual_df.empty:
-        dot_nguon_map = dot_nguon_manual_df.set_index(['ĐỢT HỌC THỬ', 'Nguồn'])['Data trùng'].to_dict()
-        df_to_show['Data trùng'] = df_to_show.apply(
-            lambda r: int(dot_nguon_map.get((str(r['ĐỢT HỌC THỬ']), str(r['Nguồn'])), 0)),
-            axis=1
-        )
+        dot_nguon_map = dot_nguon_manual_df.set_index(['ĐỢT HỌC THỬ', 'Nguồn'])['Data trùng']
+        pair_index = pd.MultiIndex.from_frame(df_to_show[['ĐỢT HỌC THỬ', 'Nguồn']].astype(str))
+        df_to_show['Data trùng'] = dot_nguon_map.reindex(pair_index, fill_value=0).to_numpy(dtype=int)
 
     # Cập nhật các số liệu nhập tay cần tính tổng vào dòng đầu tiên của mỗi đợt.
     df_to_show = assign_dot_manual_to_first_row(

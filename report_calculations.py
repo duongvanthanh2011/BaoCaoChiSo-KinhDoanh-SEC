@@ -32,6 +32,20 @@ REPORT_2_ADVISOR_COLUMN = 'Số CVHT đi làm'
 REPORT_2_AVERAGE_COLUMN = 'Data trung bình/ngày/CVHT'
 
 
+def get_cached_base_reports(raw_df, selected_sessions, revision):
+    """Một bộ kết quả nền trong từng phiên; input không làm tính lại dữ liệu CRM."""
+    sessions = tuple(sorted(set(str(s) for s in selected_sessions)))
+    key = (revision, id(raw_df), sessions, st.session_state.get('fetch_time'))
+    cached = st.session_state.get('_base_reports_cache')
+    if cached is None or cached['key'] != key:
+        filtered = raw_df[raw_df['ĐỢT HỌC THỬ'].isin(sessions)].copy() if sessions else raw_df.copy()
+        filtered = add_indicator_columns(filtered)
+        results = (compute_report_1(filtered), compute_report_2(filtered), compute_report_3(filtered))
+        cached = {'key': key, 'results': results}
+        st.session_state['_base_reports_cache'] = cached
+    return tuple(frame.copy() for frame in cached['results'])
+
+
 def add_indicator_columns(df_filtered):
     """
     Tạo các cột chỉ báo (0/1) trên dữ liệu đã lọc.
