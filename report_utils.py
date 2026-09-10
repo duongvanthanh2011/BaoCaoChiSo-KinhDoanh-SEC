@@ -874,6 +874,119 @@ def configure_report4_grid_columns(gb):
     gb.configure_column("Bill/Data (%)", valueGetter=getter_r4_bill_per_data, valueFormatter=pct_formatter, width=130)
 
 
+# ==========================================
+# JS GETTERS & CẤU HÌNH CỘT CHO BÁO CÁO 5 (TRUYỀN THÔNG)
+# ==========================================
+
+def make_r5_data_per_bill_getter(group_name):
+    """Tạo JsCode tính Data/Bill cho một nhóm tuổi hoặc TỔNG."""
+    d_col = f"{group_name}_Data"
+    b_col = f"{group_name}_Bill cọc"
+    return JsCode(f"""
+function(params) {{
+    var total = 0, bill = 0;
+    if (params.node && params.node.rowPinned) {{
+        total = params.data ? (params.data['{d_col}'] || 0) : 0;
+        bill = params.data ? (params.data['{b_col}'] || 0) : 0;
+    }} else if (params.node && (params.node.group || params.node.footer)) {{
+        total = params.node.aggData ? (params.node.aggData['{d_col}'] || 0) : 0;
+        bill = params.node.aggData ? (params.node.aggData['{b_col}'] || 0) : 0;
+    }} else {{
+        total = params.data ? (params.data['{d_col}'] || 0) : 0;
+        bill = params.data ? (params.data['{b_col}'] || 0) : 0;
+    }}
+    return bill > 0 ? (total / bill) : 0;
+}}
+""")
+
+
+def make_r5_bill_per_data_getter(group_name):
+    """Tạo JsCode tính Bill/Data (%) cho một nhóm tuổi hoặc TỔNG."""
+    d_col = f"{group_name}_Data"
+    b_col = f"{group_name}_Bill cọc"
+    return JsCode(f"""
+function(params) {{
+    var total = 0, bill = 0;
+    if (params.node && params.node.rowPinned) {{
+        total = params.data ? (params.data['{d_col}'] || 0) : 0;
+        bill = params.data ? (params.data['{b_col}'] || 0) : 0;
+    }} else if (params.node && (params.node.group || params.node.footer)) {{
+        total = params.node.aggData ? (params.node.aggData['{d_col}'] || 0) : 0;
+        bill = params.node.aggData ? (params.node.aggData['{b_col}'] || 0) : 0;
+    }} else {{
+        total = params.data ? (params.data['{d_col}'] || 0) : 0;
+        bill = params.data ? (params.data['{b_col}'] || 0) : 0;
+    }}
+    return total > 0 ? (bill / total * 100) : 0;
+}}
+""")
+
+
+def _get_r5_js_getters():
+    from data_processing import AGE_GROUPS
+    all_groups = AGE_GROUPS + ['TỔNG']
+    d_getters = {g: make_r5_data_per_bill_getter(g) for g in all_groups}
+    b_getters = {g: make_r5_bill_per_data_getter(g) for g in all_groups}
+    return d_getters, b_getters
+
+
+_R5_DATA_GETTERS, _R5_BILL_GETTERS = None, None
+
+
+def configure_report5_grid_columns(gb):
+    """
+    Cấu hình các cột cho Báo cáo 5: Nguồn Onl/Off × Nhóm tuổi (Truyền Thông).
+    Gồm 2 cột cố định bên trái (Thời gian xuất data, Nguồn) và 8 nhóm cột (7 nhóm tuổi + 1 TỔNG),
+    mỗi nhóm chứa 4 cột con: Data, Bill cọc, Data/Bill, Bill/Data (%).
+    """
+    global _R5_DATA_GETTERS, _R5_BILL_GETTERS
+    from data_processing import AGE_GROUPS
+
+    if _R5_DATA_GETTERS is None or _R5_BILL_GETTERS is None:
+        _R5_DATA_GETTERS, _R5_BILL_GETTERS = _get_r5_js_getters()
+
+    gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
+
+    col_defs = {
+        'Thời gian xuất data': {
+            'headerName': 'Thời gian xuất data',
+            'field': 'Thời gian xuất data',
+            'width': 140,
+            'pinned': 'left',
+        },
+        'Nguồn': {
+            'headerName': 'Nguồn',
+            'field': 'Nguồn',
+            'width': 200,
+            'pinned': 'left',
+        },
+    }
+
+    for group in AGE_GROUPS + ['TỔNG']:
+        is_tong = (group == 'TỔNG')
+        cell_style = {'fontWeight': 'bold'} if is_tong else None
+
+        def _make_child(name, field, width, **kwargs):
+            c = {'headerName': name, 'field': field, 'width': width, **kwargs}
+            if cell_style:
+                c['cellStyle'] = cell_style
+            return c
+
+        children = [
+            _make_child('Data', f"{group}_Data", 95, aggFunc='sum', valueFormatter=formatter_float_2_decimals),
+            _make_child('Bill cọc', f"{group}_Bill cọc", 95, aggFunc='sum', valueFormatter=formatter_float_2_decimals),
+            _make_child('Data/Bill', f"{group}_Data/Bill", 95, valueGetter=_R5_DATA_GETTERS[group], valueFormatter=formatter_float_2_decimals),
+            _make_child('Bill/Data (%)', f"{group}_Bill/Data (%)", 110, valueGetter=_R5_BILL_GETTERS[group], valueFormatter=pct_formatter),
+        ]
+
+        col_defs[group] = {
+            'headerName': group,
+            'children': children,
+        }
+
+    gb._GridOptionsBuilder__grid_options['columnDefs'] = col_defs
+
+
 def update_manual_inputs_in_state(grid_response, state_key, keys, editable_cols=None):
     """
     Đồng bộ dữ liệu nhập tay từ phản hồi AgGrid vào session state.

@@ -21,6 +21,7 @@ from report_utils import (
     configure_report2_grid_columns,
     configure_report3_grid_columns,
     configure_report4_grid_columns,
+    configure_report5_grid_columns,
 )
 from report_components import (
     manual_input_expander,
@@ -40,13 +41,16 @@ from report_calculations import (
     compute_report_2, 
     compute_report_3,
     compute_report_4,
+    compute_report_5,
     prepare_excel_report_1,
     prepare_excel_report_2,
     prepare_excel_report_3,
     prepare_excel_report_4,
+    prepare_excel_report_5,
     aggregate_report_2_rows,
     aggregate_report_3_rows,
     aggregate_report_4_rows,
+    aggregate_report_5_rows,
     calculate_report_2_average_metrics,
     REPORT_2_ADVISOR_COLUMN,
     REPORT_2_AVERAGE_COLUMN,
@@ -464,5 +468,80 @@ def render_report_4(results_4):
             excel_sheets,
             file_name='Bao_cao_Nguon_Onl_Off_Tong.xlsx',
             button_label='📥 Tải xuống Báo cáo 4 (Excel)'
+        )
+
+
+def render_report_5(results_5):
+    """
+    Hiển thị Báo cáo 5: Ma trận Nguồn Onl/Off × Nhóm tuổi (Truyền Thông).
+    Gồm 3 bảng: Nguồn Onl, Nguồn Off, Tổng nguồn (Onl + Off).
+    Mỗi bảng phân nhóm cột theo 7 nhóm tuổi + 1 TỔNG, mỗi nhóm gồm 4 chỉ số:
+    Data, Bill cọc, Data/Bill, Bill/Data (%).
+    """
+    if not isinstance(results_5, dict):
+        st.warning("⚠️ Không có dữ liệu để hiển thị.")
+        return
+
+    tables_config = [
+        ("#### I. Bảng nguồn Onl", results_5.get('onl'), "grid_report_5_onl_v1"),
+        ("#### II. Bảng nguồn Off", results_5.get('off'), "grid_report_5_off_v1"),
+        ("#### III. Bảng tổng nguồn (Onl + Off)", results_5.get('tong'), "grid_report_5_tong_v1"),
+    ]
+
+    all_empty = all(df is None or df.empty for _, df, _ in tables_config)
+    if all_empty:
+        st.warning("⚠️ Không có dữ liệu để hiển thị.")
+        return
+
+    st.markdown(
+        """
+        <div style="
+            background: linear-gradient(135deg, #E8F5E9 0%, #E3F2FD 100%);
+            border-left: 4px solid #2E7D32;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+        ">
+            <b>📊 Báo cáo Truyền Thông: Nguồn Onl/Off × Nhóm tuổi</b><br>
+            &bull; Mỗi nhóm tuổi hiển thị 4 chỉ số: <b>Data</b> (tổng data), <b>Bill cọc</b> (số data có cọc/chốt), <b>Data/Bill</b> (tỷ lệ Data / Bill), <b>Bill/Data (%)</b> (tỷ lệ Bill / Data).<br>
+            &bull; Bảng hỗ trợ cuộn ngang để theo dõi đầy đủ 8 nhóm tuổi (7 nhóm tuổi chi tiết + cột TỔNG).
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    for title, df, key in tables_config:
+        st.markdown(title)
+        if df is None or df.empty:
+            st.warning("⚠️ Không có dữ liệu trong bảng này.")
+            continue
+
+        df_to_show = df.copy()
+        gb = GridOptionsBuilder.from_dataframe(df_to_show)
+        configure_report5_grid_columns(gb)
+
+        pinned_row = None
+        if not df_to_show.empty:
+            time_val = df_to_show['Thời gian xuất data'].iloc[0] if len(df_to_show) > 0 else ''
+            pinned_row = aggregate_report_5_rows(df_to_show, time_val, '📊 TỔNG CỘNG')
+
+        render_aggrid_report(df_to_show, gb, pinned_row, key, fit_columns=False)
+
+    # Cuối hàm: 1 nút download Excel cho cả 3 sheet
+    excel_sheets = []
+    if results_5.get('onl') is not None and not results_5['onl'].empty:
+        excel_sheets.append(('BC5_Nguon_Onl', prepare_excel_report_5(results_5['onl'])))
+    if results_5.get('off') is not None and not results_5['off'].empty:
+        excel_sheets.append(('BC5_Nguon_Off', prepare_excel_report_5(results_5['off'])))
+    if results_5.get('tong') is not None and not results_5['tong'].empty:
+        excel_sheets.append(('BC5_Tong_Nguon', prepare_excel_report_5(results_5['tong'])))
+
+    if excel_sheets:
+        render_excel_download_multi_sheets(
+            excel_sheets,
+            file_name='Bao_cao_Truyen_Thong_Nguon_Tuoi.xlsx',
+            button_label='📥 Tải xuống Báo cáo 5 (Excel)'
         )
 

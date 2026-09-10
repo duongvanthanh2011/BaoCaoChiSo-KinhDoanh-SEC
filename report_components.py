@@ -479,7 +479,7 @@ def render_report_actions_bar(report_code, unique_dots, displayed_codes_by_dot, 
 # CÁC COMPONENT DÙNG CHUNG CHO RENDER BÁO CÁO
 # ==========================================
 
-def render_aggrid_report(df, gb, pinned_row=None, grid_key="grid_report"):
+def render_aggrid_report(df, gb, pinned_row=None, grid_key="grid_report", fit_columns=True):
     """
     Render bảng AgGrid chuẩn hóa với các tùy chọn grid options chung cho mọi báo cáo.
     Loại bỏ trùng lặp boilerplate giữa render_report_1, _2, _3.
@@ -489,6 +489,7 @@ def render_aggrid_report(df, gb, pinned_row=None, grid_key="grid_report"):
         gb: GridOptionsBuilder đã cấu hình sẵn cột.
         pinned_row: dict hoặc None — dòng tổng cố định ở đầu bảng.
         grid_key: string — key duy nhất cho AgGrid component.
+        fit_columns: boolean — tự co giãn cột cho vừa khung nhìn (mặc định True).
     """
     grid_options = gb.build()
     grid_options["groupIncludeFooter"] = True
@@ -504,7 +505,7 @@ def render_aggrid_report(df, gb, pinned_row=None, grid_key="grid_report"):
         gridOptions=grid_options,
         enable_enterprise_modules=True,
         allow_unsafe_jscode=True,
-        fit_columns_on_grid_load=True,
+        fit_columns_on_grid_load=fit_columns,
         height=550,
         server_sync_strategy="server_wins",
         key=grid_key

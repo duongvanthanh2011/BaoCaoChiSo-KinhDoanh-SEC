@@ -49,6 +49,7 @@ def get_cached_base_reports(raw_df, selected_sessions, revision):
             compute_report_2(filtered),
             compute_report_3(filtered),
             compute_report_4(filtered),
+            compute_report_5(filtered),
         )
         cached = {'key': key, 'results': results}
         st.session_state['_base_reports_cache'] = cached
@@ -869,6 +870,52 @@ def _calc_r4_metrics(df_table, fetch_time):
     return df[REPORT_4_COLS]
 
 
+def _merge_with_templates(rec_df, data_cols):
+    """
+    Tách rec_df theo cột 'Table' (onl/off), merge left với template cố định,
+    cộng dồn tạo bảng Tổng. Dùng chung cho BC4 và BC5.
+
+    Args:
+        rec_df: DataFrame có cột 'Table' và 'Nguồn', cùng các data_cols.
+        data_cols: List tên cột số cần group + sum.
+    Returns:
+        (onl_res, off_res, tong_res) — 3 DataFrame đã merge template và fill 0.
+    """
+    template = pd.DataFrame({'Nguồn': REPORT_4_ONL_ROWS})
+    off_template = pd.DataFrame({'Nguồn': REPORT_4_OFF_ROWS})
+
+    def _build_table(table_key, tmpl):
+        if (
+            not rec_df.empty
+            and 'Table' in rec_df.columns
+            and (rec_df['Table'] == table_key).any()
+        ):
+            grouped = (
+                rec_df[rec_df['Table'] == table_key]
+                .groupby('Nguồn', as_index=False)[data_cols]
+                .sum()
+            )
+            result = tmpl.merge(grouped, on='Nguồn', how='left')
+        else:
+            result = tmpl.copy()
+            for c in data_cols:
+                result[c] = 0.0
+        for c in data_cols:
+            result[c] = pd.to_numeric(result.get(c), errors='coerce').fillna(0.0)
+        return result
+
+    onl_res = _build_table('onl', template)
+    off_res = _build_table('off', off_template)
+
+    combined = pd.concat([onl_res, off_res], ignore_index=True)
+    tong_grouped = combined.groupby('Nguồn', as_index=False)[data_cols].sum()
+    tong_res = template.merge(tong_grouped, on='Nguồn', how='left')
+    for c in data_cols:
+        tong_res[c] = pd.to_numeric(tong_res.get(c), errors='coerce').fillna(0.0)
+
+    return onl_res, off_res, tong_res
+
+
 def build_report_4_tables(df_filtered, fetch_time):
     """
     Trả về dict {'onl': df, 'off': df, 'tong': df} — mỗi df theo REPORT_4_COLS.
@@ -914,51 +961,8 @@ def build_report_4_tables(df_filtered, fetch_time):
 
     rec_df = pd.DataFrame(records)
 
-    # Khung dòng cố định theo thứ tự nghiệp vụ
-    template = pd.DataFrame({'Nguồn': REPORT_4_ONL_ROWS})
-    off_template = pd.DataFrame({'Nguồn': REPORT_4_OFF_ROWS})
-
-    # 1. Bảng Onl (12 dòng cố định)
-    if not rec_df.empty and (rec_df['Table'] == 'onl').any():
-        onl_grouped = (
-            rec_df[rec_df['Table'] == 'onl']
-            .groupby('Nguồn', as_index=False)[['Weight', 'BillWeight']]
-            .sum()
-        )
-        onl_res = template.merge(onl_grouped, on='Nguồn', how='left')
-    else:
-        onl_res = template.copy()
-        onl_res['Weight'] = 0.0
-        onl_res['BillWeight'] = 0.0
-
-    onl_res['Weight'] = pd.to_numeric(onl_res.get('Weight'), errors='coerce').fillna(0.0)
-    onl_res['BillWeight'] = pd.to_numeric(onl_res.get('BillWeight'), errors='coerce').fillna(0.0)
-
-    # 2. Bảng Off (6 dòng cố định)
-    if not rec_df.empty and (rec_df['Table'] == 'off').any():
-        off_grouped = (
-            rec_df[rec_df['Table'] == 'off']
-            .groupby('Nguồn', as_index=False)[['Weight', 'BillWeight']]
-            .sum()
-        )
-        off_res = off_template.merge(off_grouped, on='Nguồn', how='left')
-    else:
-        off_res = off_template.copy()
-        off_res['Weight'] = 0.0
-        off_res['BillWeight'] = 0.0
-
-    off_res['Weight'] = pd.to_numeric(off_res.get('Weight'), errors='coerce').fillna(0.0)
-    off_res['BillWeight'] = pd.to_numeric(off_res.get('BillWeight'), errors='coerce').fillna(0.0)
-
-    # 3. Bảng Tổng nguồn: 12 dòng như Onl, Facebook TCn = Onl FB TCn + Off FB TCn, Google TCn = Onl GG TCn
-    combined = pd.concat([onl_res, off_res], ignore_index=True)
-    tong_grouped = (
-        combined.groupby('Nguồn', as_index=False)[['Weight', 'BillWeight']]
-        .sum()
-    )
-    tong_res = template.merge(tong_grouped, on='Nguồn', how='left')
-    tong_res['Weight'] = pd.to_numeric(tong_res.get('Weight'), errors='coerce').fillna(0.0)
-    tong_res['BillWeight'] = pd.to_numeric(tong_res.get('BillWeight'), errors='coerce').fillna(0.0)
+    # Sử dụng hàm dùng chung để merge với template cố định
+    onl_res, off_res, tong_res = _merge_with_templates(rec_df, ['Weight', 'BillWeight'])
 
     # Đổi tên cột chuẩn hóa và tính toán tỷ lệ
     onl_res = onl_res.rename(columns={'Weight': 'Tổng data', 'BillWeight': 'Bill cọc'})
@@ -1007,4 +1011,194 @@ def prepare_excel_report_4(df_table):
     df_excel = df_table.copy()
     time_val = df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else ''
     total_row = aggregate_report_4_rows(df_excel, time_val, 'TỔNG CỘNG')
+    return pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
+
+
+# ==========================================
+# TÍNH TOÁN BÁO CÁO 5: TRUYỀN THÔNG (NGUỒN ONL/OFF × NHÓM TUỔI)
+# ==========================================
+
+REPORT_5_METRIC_SUFFIXES = ['_Data', '_Bill cọc', '_Data/Bill', '_Bill/Data (%)']
+
+
+def _r5_col_order():
+    """Thứ tự cột chuẩn cho DataFrame của Báo cáo 5."""
+    cols = ['Thời gian xuất data', 'Nguồn']
+    for group in AGE_GROUPS + ['TỔNG']:
+        for suffix in REPORT_5_METRIC_SUFFIXES:
+            cols.append(f"{group}{suffix}")
+    return cols
+
+
+def build_report_5_tables(df_filtered, fetch_time):
+    """
+    Xây dựng 3 bảng Onl / Off / Tổng cho Báo cáo 5.
+    Kết hợp phân loại nguồn regex BC4 với ma trận nhóm tuổi BC3.
+    Mỗi bảng có cấu trúc: Nguồn × (nhóm tuổi × 4 chỉ số).
+
+    Returns:
+        dict {'onl': df, 'off': df, 'tong': df}
+    """
+    col_order = _r5_col_order()
+
+    if df_filtered.empty:
+        empty = pd.DataFrame(columns=col_order)
+        return {'onl': empty, 'off': empty.copy(), 'tong': empty.copy()}
+
+    df_calc = df_filtered.copy()
+
+    # --- Fallback an toàn cho các cột cần thiết (tái sử dụng logic BC4) ---
+    if "Data_coc_chot" not in df_calc.columns:
+        rel = df_calc.get(
+            "Mối quan hệ", pd.Series(index=df_calc.index, dtype=object)
+        ).fillna("")
+        df_calc["Data_coc_chot"] = rel.isin(COC_CHOT_LABELS).astype(int)
+
+    if "Nhóm tuổi" not in df_calc.columns:
+        if "description" in df_calc.columns:
+            df_calc["Nhóm tuổi"] = df_calc["description"].apply(classify_age_group)
+        else:
+            df_calc["Nhóm tuổi"] = "Chưa điền"
+
+    if "_report_4_sources_with_weights" not in df_calc.columns:
+        source_details = df_calc.get(
+            "account_source_details",
+            pd.Series(index=df_calc.index, dtype=object),
+        )
+        df_calc["_report_4_sources_with_weights"] = source_details.apply(
+            expand_report_4_sources_with_weights
+        )
+
+    # --- Expand: mỗi nguồn khớp regex × nhóm tuổi → 1 bản ghi ---
+    records = []
+    for _, row in df_calc.iterrows():
+        is_coc = int(row.get("Data_coc_chot", 0))
+        age_group = row.get("Nhóm tuổi", "Chưa điền")
+        if not isinstance(age_group, str) or not age_group.strip():
+            age_group = "Chưa điền"
+        sources = row.get("_report_4_sources_with_weights", [])
+        if isinstance(sources, list):
+            for s_key, weight in sources:
+                parts = s_key.split("::", 1)
+                if len(parts) == 2:
+                    w = float(weight)
+                    records.append({
+                        "Table": parts[0],
+                        "Nguồn": parts[1],
+                        "Nhóm tuổi": age_group,
+                        "Weight": w,
+                        "BillWeight": w * is_coc,
+                    })
+
+    rec_df = pd.DataFrame(records)
+
+    # Danh sách cột base (có thể sum khi merge templates)
+    data_cols_age = [f"{g}_Data" for g in AGE_GROUPS]
+    bill_cols_age = [f"{g}_Bill cọc" for g in AGE_GROUPS]
+    sum_cols = data_cols_age + bill_cols_age + ["TỔNG_Data", "TỔNG_Bill cọc"]
+
+    if rec_df.empty:
+        # Không có bản ghi khớp regex → bảng template toàn số 0
+        onl_res, off_res, tong_res = _merge_with_templates(
+            pd.DataFrame(columns=['Table', 'Nguồn'] + sum_cols), sum_cols
+        )
+    else:
+        # --- GroupBy + Pivot ---
+        grouped = (
+            rec_df
+            .groupby(['Table', 'Nguồn', 'Nhóm tuổi'])[['Weight', 'BillWeight']]
+            .sum()
+            .reset_index()
+        )
+
+        pivot_data = grouped.pivot_table(
+            index=['Table', 'Nguồn'], columns='Nhóm tuổi',
+            values='Weight', aggfunc='sum', fill_value=0.0,
+        )
+        pivot_bill = grouped.pivot_table(
+            index=['Table', 'Nguồn'], columns='Nhóm tuổi',
+            values='BillWeight', aggfunc='sum', fill_value=0.0,
+        )
+
+        # Đảm bảo tất cả 7 nhóm tuổi tồn tại
+        for g in AGE_GROUPS:
+            if g not in pivot_data.columns:
+                pivot_data[g] = 0.0
+            if g not in pivot_bill.columns:
+                pivot_bill[g] = 0.0
+
+        # Đổi tên cột: {tuổi} → {tuổi}_Data / {tuổi}_Bill cọc
+        pivot_data = pivot_data[AGE_GROUPS].rename(
+            columns={g: f"{g}_Data" for g in AGE_GROUPS}
+        )
+        pivot_bill = pivot_bill[AGE_GROUPS].rename(
+            columns={g: f"{g}_Bill cọc" for g in AGE_GROUPS}
+        )
+
+        combined = pd.concat([pivot_data, pivot_bill], axis=1).reset_index()
+
+        # TỔNG theo hàng (sum 7 nhóm tuổi)
+        combined["TỔNG_Data"] = combined[data_cols_age].sum(axis=1)
+        combined["TỔNG_Bill cọc"] = combined[bill_cols_age].sum(axis=1)
+
+        # Merge với template cố định (dùng chung với BC4)
+        onl_res, off_res, tong_res = _merge_with_templates(combined, sum_cols)
+
+    # --- Tính chỉ số phái sinh cho mỗi bảng ---
+    for df_table in [onl_res, off_res, tong_res]:
+        for group_name in AGE_GROUPS + ["TỔNG"]:
+            d_col = f"{group_name}_Data"
+            b_col = f"{group_name}_Bill cọc"
+            d = df_table[d_col]
+            b = df_table[b_col]
+            df_table[f"{group_name}_Data/Bill"] = (
+                (d / b.where(b > 0)).fillna(0.0).round(2)
+            )
+            df_table[f"{group_name}_Bill/Data (%)"] = (
+                (b / d.where(d > 0) * 100).fillna(0.0).round(2)
+            )
+        df_table.insert(0, 'Thời gian xuất data', fetch_time)
+
+    return {
+        'onl': onl_res[col_order],
+        'off': off_res[col_order],
+        'tong': tong_res[col_order],
+    }
+
+
+def compute_report_5(df_filtered):
+    """Tính toán Báo cáo 5 từ DataFrame đã lọc (giao diện tương thích st.session_state)."""
+    col_order = _r5_col_order()
+    if df_filtered.empty:
+        empty = pd.DataFrame(columns=col_order)
+        return {'onl': empty, 'off': empty.copy(), 'tong': empty.copy()}
+    try:
+        fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
+    except Exception:
+        fetch_time = format_fetch_time()
+    return build_report_5_tables(df_filtered, fetch_time)
+
+
+def aggregate_report_5_rows(df_rows, time_val, nguon_val):
+    """Tính dòng TỔNG CỘNG cho BC5 — sum cột _Data/_Bill cọc, tính lại Data/Bill và Bill/Data(%)."""
+    row_dict = {'Thời gian xuất data': time_val, 'Nguồn': nguon_val}
+    for group_name in AGE_GROUPS + ['TỔNG']:
+        d_col = f"{group_name}_Data"
+        b_col = f"{group_name}_Bill cọc"
+        d = round(float(df_rows[d_col].sum()), 2) if d_col in df_rows else 0.0
+        b = round(float(df_rows[b_col].sum()), 2) if b_col in df_rows else 0.0
+        row_dict[d_col] = d
+        row_dict[b_col] = b
+        row_dict[f"{group_name}_Data/Bill"] = round(d / b, 2) if b > 0 else 0.0
+        row_dict[f"{group_name}_Bill/Data (%)"] = round(b / d * 100, 2) if d > 0 else 0.0
+    return row_dict
+
+
+def prepare_excel_report_5(df_table):
+    """Thêm dòng TỔNG CỘNG vào cuối bảng BC5 cho xuất Excel."""
+    if df_table.empty:
+        return df_table
+    df_excel = df_table.copy()
+    time_val = df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else ''
+    total_row = aggregate_report_5_rows(df_excel, time_val, 'TỔNG CỘNG')
     return pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
