@@ -236,3 +236,70 @@ def build_report_2_dfs(
     nguon_df = pd.DataFrame(nguon_rows, columns=nguon_columns) if nguon_rows else pd.DataFrame(columns=nguon_columns)
 
     return dot_df, nguon_df
+
+
+# ==========================================
+# 5. KHAI BÁO SCHEMA CHO BÁO CÁO 5
+# ==========================================
+
+REPORT_5_CODE = "report_5"
+
+
+def get_r5_cost_code(channel: str, tc: str) -> str:
+    """
+    Trả về mã input chuẩn hóa cho chi phí Báo cáo 5 theo kênh và TC.
+    Ví dụ: 'facebook', 'TC1' -> 'r5_cost_fb_tc1'
+           'google', 'TC2'   -> 'r5_cost_gg_tc2'
+    """
+    ch = str(channel).strip().lower()
+    tc_clean = str(tc).strip().lower()
+    if ch == "facebook":
+        return f"r5_cost_fb_{tc_clean}"
+    if ch == "google":
+        return f"r5_cost_gg_{tc_clean}"
+    raise ValueError(f"Kênh không hợp lệ cho Báo cáo 5: {channel}")
+
+
+def get_all_r5_cost_codes() -> list[str]:
+    """Trả về toàn bộ 12 mã chi phí của Báo cáo 5."""
+    codes = []
+    for ch in ("facebook", "google"):
+        for n in range(1, 7):
+            codes.append(get_r5_cost_code(ch, f"tc{n}"))
+    return codes
+
+
+def aggregate_report_5_costs(drafts_by_dot: dict, selected_dots: list[str]) -> dict:
+    """
+    Tổng hợp chi phí theo (channel, tc) từ drafts_by_dot cho các đợt đang chọn.
+    Trả về dict {(channel, tc): int_cost}
+    Ví dụ: {("facebook", "TC1"): 1800000, ("google", "TC1"): 500000, ...}
+    """
+    from report_5_schema import REPORT_5_CHANNEL_FACEBOOK, REPORT_5_CHANNEL_GOOGLE, REPORT_5_TC_ROWS
+
+    totals = {}
+    for tc in REPORT_5_TC_ROWS:
+        totals[(REPORT_5_CHANNEL_FACEBOOK, tc)] = 0
+        totals[(REPORT_5_CHANNEL_GOOGLE, tc)] = 0
+
+    if not drafts_by_dot or not selected_dots:
+        return totals
+
+    for dot in selected_dots:
+        dot_str = str(dot)
+        dot_data = drafts_by_dot.get(dot_str, {})
+        for tc in REPORT_5_TC_ROWS:
+            fb_code = get_r5_cost_code("facebook", tc)
+            gg_code = get_r5_cost_code("google", tc)
+            val_fb = dot_data.get(fb_code, 0)
+            val_gg = dot_data.get(gg_code, 0)
+            try:
+                totals[(REPORT_5_CHANNEL_FACEBOOK, tc)] += max(0, int(val_fb))
+            except (ValueError, TypeError):
+                pass
+            try:
+                totals[(REPORT_5_CHANNEL_GOOGLE, tc)] += max(0, int(val_gg))
+            except (ValueError, TypeError):
+                pass
+
+    return totals

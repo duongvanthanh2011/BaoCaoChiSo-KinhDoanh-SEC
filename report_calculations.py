@@ -27,6 +27,29 @@ from data_processing import (
     classify_age_group,
     expand_report_3_sources_with_weights,
     expand_report_4_sources_with_weights,
+    expand_report_5_sources_with_weights,
+)
+from report_5_schema import (
+    REPORT_5_SCHEMA_VERSION,
+    REPORT_5_CHANNEL_FACEBOOK,
+    REPORT_5_CHANNEL_GOOGLE,
+    REPORT_5_CHANNEL_TOTAL,
+    REPORT_5_TC_ROWS,
+    REPORT_5_AGE_GROUPS,
+    REPORT_5_DISPLAY_GROUPS,
+    FIELD_TIME,
+    FIELD_SOURCE,
+    FIELD_ERROR_COUNT,
+    FIELD_ERROR_PERCENT,
+    FIELD_COST_TOTAL,
+    FIELD_COST_PER_VALID_DATA,
+    FIELD_COST_PER_BILL,
+    age_data_field,
+    age_bill_field,
+    age_ratio_field,
+    close_ratio_field,
+    bill_share_field,
+    get_report_5_fields,
 )
 from time_utils import format_fetch_time
 
@@ -39,7 +62,7 @@ COC_COL_SUFFIX = " (Cọc Chốt)"
 def get_cached_base_reports(raw_df, selected_sessions, revision):
     """Một bộ kết quả nền trong từng phiên; input không làm tính lại dữ liệu CRM."""
     sessions = tuple(sorted(set(str(s) for s in selected_sessions)))
-    key = (revision, id(raw_df), sessions, st.session_state.get('fetch_time'))
+    key = (revision, id(raw_df), sessions, st.session_state.get('fetch_time'), REPORT_5_SCHEMA_VERSION)
     cached = st.session_state.get('_base_reports_cache')
     if cached is None or cached['key'] != key:
         filtered = raw_df[raw_df['ĐỢT HỌC THỬ'].isin(sessions)].copy() if sessions else raw_df.copy()
@@ -1015,163 +1038,255 @@ def prepare_excel_report_4(df_table):
 
 
 # ==========================================
-# TÍNH TOÁN BÁO CÁO 5: TRUYỀN THÔNG (NGUỒN ONL/OFF × NHÓM TUỔI)
+# TÍNH TOÁN BÁO CÁO 5: TRUYỀN THÔNG (FACEBOOK & GOOGLE × NHÓM TUỔI)
 # ==========================================
 
-REPORT_5_METRIC_SUFFIXES = ['_Data', '_Bill cọc', '_Data/Bill', '_Bill/Data (%)']
+def safe_ratio(numerator, denominator, multiplier=1.0):
+    """Tính tỷ lệ an toàn, tránh chia cho 0."""
+    if denominator <= 0:
+        return 0.0
+    return round((numerator / denominator) * multiplier, 2)
 
 
-def _r5_col_order():
-    """Thứ tự cột chuẩn cho DataFrame của Báo cáo 5."""
-    cols = ['Thời gian xuất data', 'Nguồn']
-    for group in AGE_GROUPS + ['TỔNG']:
-        for suffix in REPORT_5_METRIC_SUFFIXES:
-            cols.append(f"{group}{suffix}")
-    return cols
+def finalize_report_5_metrics(frame):
+    """
+    Nhận DataFrame có các cột cộng được và tính toàn bộ tỷ lệ bằng Python:
+    - SL Data từng nhóm
+    - Bills từng nhóm
+    - error::count
+    - cost::total
+    Đảm bảo AgGrid, dòng tổng và Excel sử dụng chung một nguồn tính toán.
+    """
+    df = frame.copy()
+    if df.empty:
+        return pd.DataFrame(columns=get_report_5_fields())
+
+    # Đảm bảo các cột cộng được tồn tại
+    for g in REPORT_5_AGE_GROUPS:
+        d_col = age_data_field(g)
+        b_col = age_bill_field(g)
+        if d_col not in df.columns:
+            df[d_col] = 0.0
+        if b_col not in df.columns:
+            df[b_col] = 0.0
+
+    if FIELD_ERROR_COUNT not in df.columns:
+        df[FIELD_ERROR_COUNT] = 0.0
+    if FIELD_COST_TOTAL not in df.columns:
+        df[FIELD_COST_TOTAL] = 0
+
+    # 1. Tính TỔNG SL Data và TỔNG Bills
+    d_cols = [age_data_field(g) for g in REPORT_5_AGE_GROUPS]
+    b_cols = [age_bill_field(g) for g in REPORT_5_AGE_GROUPS]
+
+    df[age_data_field("TỔNG")] = df[d_cols].sum(axis=1).round(2)
+    df[age_bill_field("TỔNG")] = df[b_cols].sum(axis=1).round(2)
+
+    d_total = df[age_data_field("TỔNG")]
+    b_total = df[age_bill_field("TỔNG")]
+    s_total = df[FIELD_ERROR_COUNT]
+    cost_total = df[FIELD_COST_TOTAL].astype(float)
+
+    # 2. Các chỉ số trong từng nhóm tuổi
+    for g in REPORT_5_AGE_GROUPS:
+        dg = df[age_data_field(g)]
+        bg = df[age_bill_field(g)]
+
+        # Tổng tỉ lệ độ tuổi = D_g / D_total * 100
+        df[age_ratio_field(g)] = (dg / d_total.where(d_total > 0) * 100.0).fillna(0.0).round(2)
+        # Tỉ lệ chốt = B_g / D_g * 100
+        df[close_ratio_field(g)] = (bg / dg.where(dg > 0) * 100.0).fillna(0.0).round(2)
+        # %Bills = B_g / B_total * 100
+        df[bill_share_field(g)] = (bg / b_total.where(b_total > 0) * 100.0).fillna(0.0).round(2)
+
+    # 3. Nhóm TỔNG
+    # TỔNG - Tổng tỉ lệ độ tuổi = 100 nếu D_total > 0 ngược lại 0
+    df[age_ratio_field("TỔNG")] = (d_total > 0).astype(float) * 100.0
+    # TỔNG - Tỉ lệ chốt = B_total / D_total * 100
+    df[close_ratio_field("TỔNG")] = (b_total / d_total.where(d_total > 0) * 100.0).fillna(0.0).round(2)
+    # TỔNG - %Bills = 100 nếu B_total > 0 ngược lại 0
+    df[bill_share_field("TỔNG")] = (b_total > 0).astype(float) * 100.0
+
+    # 4. Data sai số
+    df[FIELD_ERROR_PERCENT] = (s_total / d_total.where(d_total > 0) * 100.0).fillna(0.0).round(2)
+
+    # 5. Chi phí
+    valid_data = (d_total - s_total).clip(lower=0.0)
+    df[FIELD_COST_PER_VALID_DATA] = (cost_total / valid_data.where(valid_data > 0)).fillna(0.0).round(2)
+    df[FIELD_COST_PER_BILL] = (cost_total / b_total.where(b_total > 0)).fillna(0.0).round(2)
+
+    # Giữ nguyên thứ tự cột chuẩn
+    return df[get_report_5_fields()]
 
 
 def build_report_5_tables(df_filtered, fetch_time):
     """
-    Xây dựng 3 bảng Onl / Off / Tổng cho Báo cáo 5.
-    Kết hợp phân loại nguồn regex BC4 với ma trận nhóm tuổi BC3.
-    Mỗi bảng có cấu trúc: Nguồn × (nhóm tuổi × 4 chỉ số).
-
-    Returns:
-        dict {'onl': df, 'off': df, 'tong': df}
+    Xây dựng 3 bảng Facebook / Google / Tổng cho Báo cáo 5.
+    Mỗi bảng có đúng 6 dòng TC1..TC6.
     """
-    col_order = _r5_col_order()
-
     if df_filtered.empty:
-        empty = pd.DataFrame(columns=col_order)
-        return {'onl': empty, 'off': empty.copy(), 'tong': empty.copy()}
+        empty_rows = []
+        for tc in REPORT_5_TC_ROWS:
+            r = {
+                FIELD_TIME: fetch_time,
+                FIELD_SOURCE: tc,
+                FIELD_ERROR_COUNT: 0.0,
+                FIELD_COST_TOTAL: 0,
+            }
+            for g in REPORT_5_AGE_GROUPS:
+                r[age_data_field(g)] = 0.0
+                r[age_bill_field(g)] = 0.0
+            empty_rows.append(r)
+        empty_df = finalize_report_5_metrics(pd.DataFrame(empty_rows))
+        return {
+            REPORT_5_CHANNEL_FACEBOOK: empty_df,
+            REPORT_5_CHANNEL_GOOGLE: empty_df.copy(),
+            REPORT_5_CHANNEL_TOTAL: empty_df.copy(),
+        }
 
     df_calc = df_filtered.copy()
 
-    # --- Fallback an toàn cho các cột cần thiết (tái sử dụng logic BC4) ---
+    # Chuẩn hóa Data_coc_chot
     if "Data_coc_chot" not in df_calc.columns:
-        rel = df_calc.get(
-            "Mối quan hệ", pd.Series(index=df_calc.index, dtype=object)
-        ).fillna("")
+        rel = df_calc.get("Mối quan hệ", pd.Series(index=df_calc.index, dtype=object)).fillna("")
         df_calc["Data_coc_chot"] = rel.isin(COC_CHOT_LABELS).astype(int)
 
-    if "Nhóm tuổi" not in df_calc.columns:
-        if "description" in df_calc.columns:
-            df_calc["Nhóm tuổi"] = df_calc["description"].apply(classify_age_group)
-        else:
-            df_calc["Nhóm tuổi"] = "Chưa điền"
+    # Chuẩn hóa Data_sai_so
+    if "SAI SỐ - SAI ĐỐI TƯỢNG" not in df_calc.columns:
+        rel = df_calc.get("Mối quan hệ", pd.Series(index=df_calc.index, dtype=object)).fillna("")
+        df_calc["SAI SỐ - SAI ĐỐI TƯỢNG"] = rel.isin(SAI_SO_SAI_DOI_TUONG_LABELS).astype(int)
 
-    if "_report_4_sources_with_weights" not in df_calc.columns:
-        source_details = df_calc.get(
-            "account_source_details",
-            pd.Series(index=df_calc.index, dtype=object),
-        )
-        df_calc["_report_4_sources_with_weights"] = source_details.apply(
-            expand_report_4_sources_with_weights
-        )
+    # Chuẩn hóa nhóm tuổi cục bộ cho BC5: Độ tuổi khác / Chưa điền -> Khác
+    if "description" in df_calc.columns:
+        raw_age = df_calc["description"].apply(classify_age_group)
+    else:
+        raw_age = df_calc.get("Nhóm tuổi", pd.Series("Chưa điền", index=df_calc.index))
 
-    # --- Expand: mỗi nguồn khớp regex × nhóm tuổi → 1 bản ghi ---
+    def _map_r5_age(val):
+        if not isinstance(val, str) or not val.strip():
+            return "Khác"
+        if val in {"Độ tuổi khác", "Chưa điền"}:
+            return "Khác"
+        if val in REPORT_5_AGE_GROUPS:
+            return val
+        return "Khác"
+
+    r5_age_series = raw_age.apply(_map_r5_age)
+
+    # Nguồn Báo cáo 5
+    if "_report_5_sources_with_weights" not in df_calc.columns:
+        source_details = df_calc.get("account_source_details", pd.Series(index=df_calc.index, dtype=object))
+        r5_sources = source_details.apply(expand_report_5_sources_with_weights)
+    else:
+        r5_sources = df_calc["_report_5_sources_with_weights"]
+
+    # Thu thập record
     records = []
-    for _, row in df_calc.iterrows():
+    for idx, row in df_calc.iterrows():
         is_coc = int(row.get("Data_coc_chot", 0))
-        age_group = row.get("Nhóm tuổi", "Chưa điền")
-        if not isinstance(age_group, str) or not age_group.strip():
-            age_group = "Chưa điền"
-        sources = row.get("_report_4_sources_with_weights", [])
+        is_err = int(row.get("SAI SỐ - SAI ĐỐI TƯỢNG", 0))
+        age_group = r5_age_series.loc[idx]
+        sources = r5_sources.loc[idx]
         if isinstance(sources, list):
-            for s_key, weight in sources:
-                parts = s_key.split("::", 1)
-                if len(parts) == 2:
-                    w = float(weight)
+            for item in sources:
+                if len(item) == 3:
+                    ch, tc, w = item
+                    w = float(w)
                     records.append({
-                        "Table": parts[0],
-                        "Nguồn": parts[1],
+                        "Kênh": ch,
+                        "Nguồn": tc,
                         "Nhóm tuổi": age_group,
-                        "Weight": w,
+                        "DataWeight": w,
                         "BillWeight": w * is_coc,
+                        "ErrorWeight": w * is_err,
                     })
 
     rec_df = pd.DataFrame(records)
 
-    # Danh sách cột base (có thể sum khi merge templates)
-    data_cols_age = [f"{g}_Data" for g in AGE_GROUPS]
-    bill_cols_age = [f"{g}_Bill cọc" for g in AGE_GROUPS]
-    sum_cols = data_cols_age + bill_cols_age + ["TỔNG_Data", "TỔNG_Bill cọc"]
+    # Tạo bảng base cho Facebook và Google
+    fb_rows = []
+    gg_rows = []
 
-    if rec_df.empty:
-        # Không có bản ghi khớp regex → bảng template toàn số 0
-        onl_res, off_res, tong_res = _merge_with_templates(
-            pd.DataFrame(columns=['Table', 'Nguồn'] + sum_cols), sum_cols
-        )
-    else:
-        # --- GroupBy + Pivot ---
-        grouped = (
-            rec_df
-            .groupby(['Table', 'Nguồn', 'Nhóm tuổi'])[['Weight', 'BillWeight']]
-            .sum()
-            .reset_index()
-        )
+    for tc in REPORT_5_TC_ROWS:
+        # Facebook
+        if not rec_df.empty:
+            sub_fb = rec_df[(rec_df["Kênh"] == REPORT_5_CHANNEL_FACEBOOK) & (rec_df["Nguồn"] == tc)]
+            err_fb = sub_fb["ErrorWeight"].sum()
+        else:
+            sub_fb = pd.DataFrame()
+            err_fb = 0.0
 
-        pivot_data = grouped.pivot_table(
-            index=['Table', 'Nguồn'], columns='Nhóm tuổi',
-            values='Weight', aggfunc='sum', fill_value=0.0,
-        )
-        pivot_bill = grouped.pivot_table(
-            index=['Table', 'Nguồn'], columns='Nhóm tuổi',
-            values='BillWeight', aggfunc='sum', fill_value=0.0,
-        )
+        r_fb = {
+            FIELD_TIME: fetch_time,
+            FIELD_SOURCE: tc,
+            FIELD_ERROR_COUNT: round(float(err_fb), 2),
+            FIELD_COST_TOTAL: 0,
+        }
+        for g in REPORT_5_AGE_GROUPS:
+            if not sub_fb.empty:
+                g_match = sub_fb[sub_fb["Nhóm tuổi"] == g]
+                d_val = g_match["DataWeight"].sum()
+                b_val = g_match["BillWeight"].sum()
+            else:
+                d_val = 0.0
+                b_val = 0.0
+            r_fb[age_data_field(g)] = round(float(d_val), 2)
+            r_fb[age_bill_field(g)] = round(float(b_val), 2)
+        fb_rows.append(r_fb)
 
-        # Đảm bảo tất cả 7 nhóm tuổi tồn tại
-        for g in AGE_GROUPS:
-            if g not in pivot_data.columns:
-                pivot_data[g] = 0.0
-            if g not in pivot_bill.columns:
-                pivot_bill[g] = 0.0
+        # Google
+        if not rec_df.empty:
+            sub_gg = rec_df[(rec_df["Kênh"] == REPORT_5_CHANNEL_GOOGLE) & (rec_df["Nguồn"] == tc)]
+            err_gg = sub_gg["ErrorWeight"].sum()
+        else:
+            sub_gg = pd.DataFrame()
+            err_gg = 0.0
 
-        # Đổi tên cột: {tuổi} → {tuổi}_Data / {tuổi}_Bill cọc
-        pivot_data = pivot_data[AGE_GROUPS].rename(
-            columns={g: f"{g}_Data" for g in AGE_GROUPS}
-        )
-        pivot_bill = pivot_bill[AGE_GROUPS].rename(
-            columns={g: f"{g}_Bill cọc" for g in AGE_GROUPS}
-        )
+        r_gg = {
+            FIELD_TIME: fetch_time,
+            FIELD_SOURCE: tc,
+            FIELD_ERROR_COUNT: round(float(err_gg), 2),
+            FIELD_COST_TOTAL: 0,
+        }
+        for g in REPORT_5_AGE_GROUPS:
+            if not sub_gg.empty:
+                g_match = sub_gg[sub_gg["Nhóm tuổi"] == g]
+                d_val = g_match["DataWeight"].sum()
+                b_val = g_match["BillWeight"].sum()
+            else:
+                d_val = 0.0
+                b_val = 0.0
+            r_gg[age_data_field(g)] = round(float(d_val), 2)
+            r_gg[age_bill_field(g)] = round(float(b_val), 2)
+        gg_rows.append(r_gg)
 
-        combined = pd.concat([pivot_data, pivot_bill], axis=1).reset_index()
+    # Bảng Tổng: Total(TCn) = Facebook(TCn) + Google(TCn) (cộng các trường additive)
+    tong_rows = []
+    for r_fb, r_gg in zip(fb_rows, gg_rows):
+        r_tong = {
+            FIELD_TIME: fetch_time,
+            FIELD_SOURCE: r_fb[FIELD_SOURCE],
+            FIELD_ERROR_COUNT: round(float(r_fb[FIELD_ERROR_COUNT] + r_gg[FIELD_ERROR_COUNT]), 2),
+            FIELD_COST_TOTAL: int(r_fb[FIELD_COST_TOTAL] + r_gg[FIELD_COST_TOTAL]),
+        }
+        for g in REPORT_5_AGE_GROUPS:
+            r_tong[age_data_field(g)] = round(float(r_fb[age_data_field(g)] + r_gg[age_data_field(g)]), 2)
+            r_tong[age_bill_field(g)] = round(float(r_fb[age_bill_field(g)] + r_gg[age_bill_field(g)]), 2)
+        tong_rows.append(r_tong)
 
-        # TỔNG theo hàng (sum 7 nhóm tuổi)
-        combined["TỔNG_Data"] = combined[data_cols_age].sum(axis=1)
-        combined["TỔNG_Bill cọc"] = combined[bill_cols_age].sum(axis=1)
-
-        # Merge với template cố định (dùng chung với BC4)
-        onl_res, off_res, tong_res = _merge_with_templates(combined, sum_cols)
-
-    # --- Tính chỉ số phái sinh cho mỗi bảng ---
-    for df_table in [onl_res, off_res, tong_res]:
-        for group_name in AGE_GROUPS + ["TỔNG"]:
-            d_col = f"{group_name}_Data"
-            b_col = f"{group_name}_Bill cọc"
-            d = df_table[d_col]
-            b = df_table[b_col]
-            df_table[f"{group_name}_Data/Bill"] = (
-                (d / b.where(b > 0)).fillna(0.0).round(2)
-            )
-            df_table[f"{group_name}_Bill/Data (%)"] = (
-                (b / d.where(d > 0) * 100).fillna(0.0).round(2)
-            )
-        df_table.insert(0, 'Thời gian xuất data', fetch_time)
+    final_fb = finalize_report_5_metrics(pd.DataFrame(fb_rows))
+    final_gg = finalize_report_5_metrics(pd.DataFrame(gg_rows))
+    final_tong = finalize_report_5_metrics(pd.DataFrame(tong_rows))
 
     return {
-        'onl': onl_res[col_order],
-        'off': off_res[col_order],
-        'tong': tong_res[col_order],
+        REPORT_5_CHANNEL_FACEBOOK: final_fb,
+        REPORT_5_CHANNEL_GOOGLE: final_gg,
+        REPORT_5_CHANNEL_TOTAL: final_tong,
     }
 
 
 def compute_report_5(df_filtered):
     """Tính toán Báo cáo 5 từ DataFrame đã lọc (giao diện tương thích st.session_state)."""
-    col_order = _r5_col_order()
-    if df_filtered.empty:
-        empty = pd.DataFrame(columns=col_order)
-        return {'onl': empty, 'off': empty.copy(), 'tong': empty.copy()}
     try:
         fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
     except Exception:
@@ -1179,19 +1294,90 @@ def compute_report_5(df_filtered):
     return build_report_5_tables(df_filtered, fetch_time)
 
 
+def apply_report_5_costs(report_tables, cost_totals):
+    """
+    Ghép chi phí nhập tay vào Báo cáo 5 sau cache CRM:
+    - cost_totals: dict mapping (channel, tc) -> int (vd: {("facebook", "TC1"): 1000000})
+    Tính toán lại hai chỉ số chi phí cho Facebook, Google và bảng Tổng.
+    """
+    if not report_tables:
+        return report_tables
+
+    fb_df = report_tables.get(REPORT_5_CHANNEL_FACEBOOK)
+    gg_df = report_tables.get(REPORT_5_CHANNEL_GOOGLE)
+    if fb_df is None or gg_df is None or fb_df.empty or gg_df.empty:
+        return report_tables
+
+    new_fb = fb_df.copy()
+    new_gg = gg_df.copy()
+
+    for tc in REPORT_5_TC_ROWS:
+        c_fb = cost_totals.get((REPORT_5_CHANNEL_FACEBOOK, tc), 0)
+        c_gg = cost_totals.get((REPORT_5_CHANNEL_GOOGLE, tc), 0)
+        new_fb.loc[new_fb[FIELD_SOURCE] == tc, FIELD_COST_TOTAL] = int(c_fb)
+        new_gg.loc[new_gg[FIELD_SOURCE] == tc, FIELD_COST_TOTAL] = int(c_gg)
+
+    final_fb = finalize_report_5_metrics(new_fb)
+    final_gg = finalize_report_5_metrics(new_gg)
+
+    # Bảng Tổng: Total(TCn) = Facebook(TCn) + Google(TCn)
+    time_val = final_fb[FIELD_TIME].iloc[0] if len(final_fb) > 0 else ""
+    tong_rows = []
+    for tc in REPORT_5_TC_ROWS:
+        fb_row = final_fb[final_fb[FIELD_SOURCE] == tc].iloc[0]
+        gg_row = final_gg[final_gg[FIELD_SOURCE] == tc].iloc[0]
+        r_tong = {
+            FIELD_TIME: time_val,
+            FIELD_SOURCE: tc,
+            FIELD_ERROR_COUNT: round(float(fb_row[FIELD_ERROR_COUNT] + gg_row[FIELD_ERROR_COUNT]), 2),
+            FIELD_COST_TOTAL: int(fb_row[FIELD_COST_TOTAL] + gg_row[FIELD_COST_TOTAL]),
+        }
+        for g in REPORT_5_AGE_GROUPS:
+            r_tong[age_data_field(g)] = round(float(fb_row[age_data_field(g)] + gg_row[age_data_field(g)]), 2)
+            r_tong[age_bill_field(g)] = round(float(fb_row[age_bill_field(g)] + gg_row[age_bill_field(g)]), 2)
+        tong_rows.append(r_tong)
+
+    final_tong = finalize_report_5_metrics(pd.DataFrame(tong_rows))
+
+    return {
+        REPORT_5_CHANNEL_FACEBOOK: final_fb,
+        REPORT_5_CHANNEL_GOOGLE: final_gg,
+        REPORT_5_CHANNEL_TOTAL: final_tong,
+    }
+
+
 def aggregate_report_5_rows(df_rows, time_val, nguon_val):
-    """Tính dòng TỔNG CỘNG cho BC5 — sum cột _Data/_Bill cọc, tính lại Data/Bill và Bill/Data(%)."""
-    row_dict = {'Thời gian xuất data': time_val, 'Nguồn': nguon_val}
-    for group_name in AGE_GROUPS + ['TỔNG']:
-        d_col = f"{group_name}_Data"
-        b_col = f"{group_name}_Bill cọc"
-        d = round(float(df_rows[d_col].sum()), 2) if d_col in df_rows else 0.0
-        b = round(float(df_rows[b_col].sum()), 2) if b_col in df_rows else 0.0
-        row_dict[d_col] = d
-        row_dict[b_col] = b
-        row_dict[f"{group_name}_Data/Bill"] = round(d / b, 2) if b > 0 else 0.0
-        row_dict[f"{group_name}_Bill/Data (%)"] = round(b / d * 100, 2) if d > 0 else 0.0
-    return row_dict
+    """
+    Tính dòng TỔNG CỘNG cho BC5:
+    1. Sum các cột cộng được (SL Data từng nhóm, Bills từng nhóm, SL data sai số, Tổng chi phí)
+    2. Gọi finalize_report_5_metrics() để tính lại toàn bộ tỷ lệ
+    """
+    if df_rows.empty:
+        base_dict = {
+            FIELD_TIME: time_val,
+            FIELD_SOURCE: nguon_val,
+            FIELD_ERROR_COUNT: 0.0,
+            FIELD_COST_TOTAL: 0,
+        }
+        for g in REPORT_5_AGE_GROUPS:
+            base_dict[age_data_field(g)] = 0.0
+            base_dict[age_bill_field(g)] = 0.0
+        final_df = finalize_report_5_metrics(pd.DataFrame([base_dict]))
+        return final_df.iloc[0].to_dict()
+
+    summed = {
+        FIELD_TIME: time_val,
+        FIELD_SOURCE: nguon_val,
+        FIELD_ERROR_COUNT: round(float(df_rows[FIELD_ERROR_COUNT].sum()), 2),
+        FIELD_COST_TOTAL: int(round(float(df_rows[FIELD_COST_TOTAL].sum()))),
+    }
+    for g in REPORT_5_AGE_GROUPS:
+        summed[age_data_field(g)] = round(float(df_rows[age_data_field(g)].sum()), 2)
+        summed[age_bill_field(g)] = round(float(df_rows[age_bill_field(g)].sum()), 2)
+
+    summed_df = pd.DataFrame([summed])
+    final_df = finalize_report_5_metrics(summed_df)
+    return final_df.iloc[0].to_dict()
 
 
 def prepare_excel_report_5(df_table):
@@ -1199,6 +1385,5 @@ def prepare_excel_report_5(df_table):
     if df_table.empty:
         return df_table
     df_excel = df_table.copy()
-    time_val = df_excel['Thời gian xuất data'].iloc[0] if len(df_excel) > 0 else ''
-    total_row = aggregate_report_5_rows(df_excel, time_val, 'TỔNG CỘNG')
+    time_val = df_excel[FIELD_TIME].iloc[0] if len(df_excel) > 0 else ''
     return pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)

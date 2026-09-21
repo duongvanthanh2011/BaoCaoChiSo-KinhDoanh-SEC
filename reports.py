@@ -28,12 +28,13 @@ from report_components import (
     render_dot_manual_inputs,
     render_dot_nguon_manual_inputs,
     render_dot_nguon_matrix_inputs,
+    render_dot_metric_matrix_inputs,
     render_aggrid_report,
     render_excel_download,
     render_excel_download_multi_sheets,
+    render_report_5_excel_download,
     assign_dot_manual_to_first_row,
     render_report_actions_bar,
-
 )
 from report_calculations import (
     add_indicator_columns, 
@@ -51,21 +52,34 @@ from report_calculations import (
     aggregate_report_3_rows,
     aggregate_report_4_rows,
     aggregate_report_5_rows,
+    apply_report_5_costs,
     calculate_report_2_average_metrics,
     REPORT_2_ADVISOR_COLUMN,
     REPORT_2_AVERAGE_COLUMN,
 )
+from report_5_schema import (
+    REPORT_5_CHANNEL_FACEBOOK,
+    REPORT_5_CHANNEL_GOOGLE,
+    REPORT_5_CHANNEL_TOTAL,
+    REPORT_5_TC_ROWS,
+    FIELD_TIME,
+)
 from manual_input_schema import (
     REPORT_1_CODE,
     REPORT_2_CODE,
+    REPORT_5_CODE,
     REPORT_1_COL_TO_CODE,
     REPORT_2_COL_TO_CODE,
     get_r2_duplicate_code,
+    get_r5_cost_code,
+    get_all_r5_cost_codes,
+    aggregate_report_5_costs,
 )
 from manual_input_state import (
     get_session_entry,
     set_loaded_baseline,
     mark_load_error,
+    get_all_drafts_for_report,
 )
 from manual_input_repository import get_repository
 
@@ -471,27 +485,82 @@ def render_report_4(results_4):
         )
 
 
-def render_report_5(results_5):
+def render_report_5(results_5, selected_sessions=None, repository=None):
     """
-    Hiển thị Báo cáo 5: Ma trận Nguồn Onl/Off × Nhóm tuổi (Truyền Thông).
-    Gồm 3 bảng: Nguồn Onl, Nguồn Off, Tổng nguồn (Onl + Off).
-    Mỗi bảng phân nhóm cột theo 7 nhóm tuổi + 1 TỔNG, mỗi nhóm gồm 4 chỉ số:
-    Data, Bill cọc, Data/Bill, Bill/Data (%).
+    Hiển thị Báo cáo 5: Truyền Thông (Facebook & Google × Độ Tuổi).
+    Gồm 3 bảng: Facebook, Google, và Tổng Facebook + Google.
+    Tích hợp form nhập Tổng chi phí theo đợt × kênh × TC lưu vào Supabase.
     """
     if not isinstance(results_5, dict):
         st.warning("⚠️ Không có dữ liệu để hiển thị.")
         return
 
-    tables_config = [
-        ("#### I. Bảng nguồn Onl", results_5.get('onl'), "grid_report_5_onl_v1"),
-        ("#### II. Bảng nguồn Off", results_5.get('off'), "grid_report_5_off_v1"),
-        ("#### III. Bảng tổng nguồn (Onl + Off)", results_5.get('tong'), "grid_report_5_tong_v1"),
-    ]
+    if repository is None:
+        repository = get_repository()
 
-    all_empty = all(df is None or df.empty for _, df, _ in tables_config)
-    if all_empty:
-        st.warning("⚠️ Không có dữ liệu để hiển thị.")
-        return
+    # 1. Xác định các đợt hiệu lực
+    unique_dots = sorted(list(dict.fromkeys(str(d) for d in (selected_sessions or []) if d is not None)))
+    if not unique_dots:
+        unique_dots = ["Tất cả đợt"]
+
+    # 2. Tự động tải dữ liệu chi phí đã lưu từ Supabase nếu chưa có trong phiên
+    unloaded_dots = [d for d in unique_dots if get_session_entry(REPORT_5_CODE, d)["load_status"] == "unloaded"]
+    if unloaded_dots and repository and repository.is_configured():
+        try:
+            latest_map = repository.load_latest_batch(REPORT_5_CODE, unloaded_dots)
+            for d in unloaded_dots:
+                rec = latest_map.get(d, {})
+                set_loaded_baseline(REPORT_5_CODE, d, rec.get("version_no", 0), rec.get("metric_value", {}))
+        except Exception as e:
+            for d in unloaded_dots:
+                mark_load_error(REPORT_5_CODE, d, str(e))
+            st.warning(f"⚠️ Không thể tải dữ liệu chi phí đã lưu từ máy chủ: {e}. Đang sử dụng dữ liệu phiên.")
+
+    # 3. Thanh tác vụ (Lưu dữ liệu & Tải lại)
+    all_codes = get_all_r5_cost_codes()
+    displayed_codes_by_dot = {d: all_codes for d in unique_dots}
+    render_report_actions_bar(REPORT_5_CODE, unique_dots, displayed_codes_by_dot, repository=repository)
+
+    # 4. Form ma trận nhập chi phí cho Facebook và Google theo TC
+    with manual_input_expander("✏️ Bảng nhập chi phí truyền thông theo đợt (Facebook & Google)"):
+        st.markdown(
+            "<div style='font-size: 13px; color: #64748B; margin-bottom: 8px;'>"
+            "Nhập chi phí thực tế cho từng kênh và TC theo từng đợt học thử (đơn vị: VNĐ). "
+            "Bảng Tổng Facebook + Google sẽ tự động cộng dồn chi phí tương ứng."
+            "</div>",
+            unsafe_allow_html=True
+        )
+        fb_manual_df, fb_hash = render_dot_metric_matrix_inputs(
+            title="1. Chi phí Facebook theo TC (VNĐ)",
+            state_key="report_5_fb_cost_manual",
+            unique_dots=unique_dots,
+            column_labels=REPORT_5_TC_ROWS,
+            report_code=REPORT_5_CODE,
+            input_code_factory=lambda tc: get_r5_cost_code("facebook", tc),
+            value_column="Chi phí",
+            key_prefix="r5_cost_fb",
+            step=100000,
+            number_format="%d",
+        )
+        gg_manual_df, gg_hash = render_dot_metric_matrix_inputs(
+            title="2. Chi phí Google theo TC (VNĐ)",
+            state_key="report_5_gg_cost_manual",
+            unique_dots=unique_dots,
+            column_labels=REPORT_5_TC_ROWS,
+            report_code=REPORT_5_CODE,
+            input_code_factory=lambda tc: get_r5_cost_code("google", tc),
+            value_column="Chi phí",
+            key_prefix="r5_cost_gg",
+            step=100000,
+            number_format="%d",
+        )
+
+    manual_hash = f"{fb_hash}_{gg_hash}"
+
+    # 5. Tổng hợp chi phí các đợt đang chọn và ghép vào kết quả Báo cáo 5
+    drafts_by_dot = get_all_drafts_for_report(REPORT_5_CODE, unique_dots)
+    cost_totals = aggregate_report_5_costs(drafts_by_dot, unique_dots)
+    enriched_tables = apply_report_5_costs(results_5, cost_totals)
 
     st.markdown(
         """
@@ -504,13 +573,25 @@ def render_report_5(results_5):
             font-size: 14px;
             line-height: 1.6;
         ">
-            <b>📊 Báo cáo Truyền Thông: Nguồn Onl/Off × Nhóm tuổi</b><br>
-            &bull; Mỗi nhóm tuổi hiển thị 4 chỉ số: <b>Data</b> (tổng data), <b>Bill cọc</b> (số data có cọc/chốt), <b>Data/Bill</b> (tỷ lệ Data / Bill), <b>Bill/Data (%)</b> (tỷ lệ Bill / Data).<br>
-            &bull; Bảng hỗ trợ cuộn ngang để theo dõi đầy đủ 8 nhóm tuổi (7 nhóm tuổi chi tiết + cột TỔNG).
+            <b>📊 Báo cáo Truyền Thông: Facebook & Google theo Nhóm tuổi</b><br>
+            &bull; Hiển thị theo 3 bảng: <b>Facebook</b>, <b>Google</b>, và <b>Tổng Facebook + Google</b> (tự động cộng dồn).<br>
+            &bull; Mỗi bảng theo dõi đầy đủ <b>Data sai số</b>, <b>Chi phí</b>, và <b>6 nhóm tuổi</b> cùng cột <b>TỔNG</b>.<br>
+            &bull; Bảng hỗ trợ cuộn ngang để theo dõi toàn bộ các chỉ số chi tiết.
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    tables_config = [
+        ("#### I. Báo cáo Facebook", enriched_tables.get(REPORT_5_CHANNEL_FACEBOOK), f"grid_report_5_facebook_v2_{manual_hash}"),
+        ("#### II. Báo cáo Google", enriched_tables.get(REPORT_5_CHANNEL_GOOGLE), f"grid_report_5_google_v2_{manual_hash}"),
+        ("#### III. Báo cáo Tổng Facebook + Google", enriched_tables.get(REPORT_5_CHANNEL_TOTAL), f"grid_report_5_tong_v2_{manual_hash}"),
+    ]
+
+    all_empty = all(df is None or df.empty for _, df, _ in tables_config)
+    if all_empty:
+        st.warning("⚠️ Không có dữ liệu để hiển thị.")
+        return
 
     for title, df, key in tables_config:
         st.markdown(title)
@@ -522,26 +603,23 @@ def render_report_5(results_5):
         gb = GridOptionsBuilder.from_dataframe(df_to_show)
         configure_report5_grid_columns(gb)
 
-        pinned_row = None
-        if not df_to_show.empty:
-            time_val = df_to_show['Thời gian xuất data'].iloc[0] if len(df_to_show) > 0 else ''
-            pinned_row = aggregate_report_5_rows(df_to_show, time_val, '📊 TỔNG CỘNG')
+        time_val = df_to_show[FIELD_TIME].iloc[0] if len(df_to_show) > 0 else ""
+        pinned_row = aggregate_report_5_rows(df_to_show, time_val, "📊 TỔNG CỘNG")
 
         render_aggrid_report(df_to_show, gb, pinned_row, key, fit_columns=False)
 
-    # Cuối hàm: 1 nút download Excel cho cả 3 sheet
+    # 6. Một nút download Excel chuyên biệt 3 sheet
     excel_sheets = []
-    if results_5.get('onl') is not None and not results_5['onl'].empty:
-        excel_sheets.append(('BC5_Nguon_Onl', prepare_excel_report_5(results_5['onl'])))
-    if results_5.get('off') is not None and not results_5['off'].empty:
-        excel_sheets.append(('BC5_Nguon_Off', prepare_excel_report_5(results_5['off'])))
-    if results_5.get('tong') is not None and not results_5['tong'].empty:
-        excel_sheets.append(('BC5_Tong_Nguon', prepare_excel_report_5(results_5['tong'])))
+    if enriched_tables.get(REPORT_5_CHANNEL_FACEBOOK) is not None and not enriched_tables[REPORT_5_CHANNEL_FACEBOOK].empty:
+        excel_sheets.append(('BC5_Facebook', enriched_tables[REPORT_5_CHANNEL_FACEBOOK]))
+    if enriched_tables.get(REPORT_5_CHANNEL_GOOGLE) is not None and not enriched_tables[REPORT_5_CHANNEL_GOOGLE].empty:
+        excel_sheets.append(('BC5_Google', enriched_tables[REPORT_5_CHANNEL_GOOGLE]))
+    if enriched_tables.get(REPORT_5_CHANNEL_TOTAL) is not None and not enriched_tables[REPORT_5_CHANNEL_TOTAL].empty:
+        excel_sheets.append(('BC5_Tong_FB_GG', enriched_tables[REPORT_5_CHANNEL_TOTAL]))
 
     if excel_sheets:
-        render_excel_download_multi_sheets(
+        render_report_5_excel_download(
             excel_sheets,
-            file_name='Bao_cao_Truyen_Thong_Nguon_Tuoi.xlsx',
+            file_name='Bao_cao_Truyen_Thong_FB_GG_Theo_Do_Tuoi.xlsx',
             button_label='📥 Tải xuống Báo cáo 5 (Excel)'
         )
-

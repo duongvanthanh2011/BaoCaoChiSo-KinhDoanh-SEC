@@ -295,39 +295,62 @@ def render_dot_nguon_manual_inputs(title, state_key, unique_pairs, number_column
     return manual_df, hash_dot_manual_df(manual_df)
 
 
-def render_dot_nguon_matrix_inputs(title, state_key, unique_dots, unique_nguons, key_prefix="r2_trung", report_code=REPORT_2_CODE):
+def render_dot_metric_matrix_inputs(
+    title,
+    state_key,
+    unique_dots,
+    column_labels,
+    report_code,
+    input_code_factory,
+    value_column,
+    key_prefix="metric_matrix",
+    step=1,
+    min_value=0,
+    number_format="%d",
+):
     """
-    Render bảng nhập Data trùng dạng ma trận (mỗi dòng là 1 Đợt, các cột là các Nguồn).
+    Render bảng nhập metric dạng ma trận tổng quát (mỗi dòng là 1 Đợt, các cột là column_labels).
     Tích hợp với bản nháp (draft) trong phiên, tự động đồng bộ khi gõ số.
     
     Trả về:
-    - manual_df: DataFrame gồm ['ĐỢT HỌC THỬ', 'Nguồn', 'Data trùng']
+    - manual_df: DataFrame gồm [DOT_COLUMN, 'Nguồn', value_column]
     - manual_hash: hash của manual_df
     """
     unique_dots = list(unique_dots)
-    unique_nguons = list(unique_nguons)
+    column_labels = list(column_labels)
     
     if state_key not in st.session_state:
         st.session_state[state_key] = {}
         
-    # Tiêu đề với chiều cao và font size đồng nhất
-    st.markdown(f"<div style='font-size: 15px; font-weight: 600; color: #1E293B; margin-bottom: 8px; height: 24px; line-height: 24px;'>{title}</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='font-size: 15px; font-weight: 600; color: #1E293B; margin-bottom: 8px; height: 24px; line-height: 24px;'>{title}</div>",
+        unsafe_allow_html=True,
+    )
     
-    col_widths = [1.3] + [1.0] * len(unique_nguons)
+    col_widths = [1.3] + [1.0] * len(column_labels)
     header_cols = st.columns(col_widths)
-    header_cols[0].markdown(f"<div style='height: 38px; display: flex; align-items: flex-end; font-weight: 700; font-size: 13px;'>{DOT_COLUMN}</div>", unsafe_allow_html=True)
-    for idx, nguon in enumerate(unique_nguons, start=1):
-        header_cols[idx].markdown(f"<div style='height: 38px; display: flex; align-items: flex-end; font-weight: 700; font-size: 13px; line-height: 1.2;'>{nguon}</div>", unsafe_allow_html=True)
+    header_cols[0].markdown(
+        f"<div style='height: 38px; display: flex; align-items: flex-end; font-weight: 700; font-size: 13px;'>{DOT_COLUMN}</div>",
+        unsafe_allow_html=True,
+    )
+    for idx, col_lbl in enumerate(column_labels, start=1):
+        header_cols[idx].markdown(
+            f"<div style='height: 38px; display: flex; align-items: flex-end; font-weight: 700; font-size: 13px; line-height: 1.2;'>{col_lbl}</div>",
+            unsafe_allow_html=True,
+        )
         
     manual_rows = []
     for dot_name in unique_dots:
         dot_hash = hashlib.md5(str(dot_name).encode("utf-8")).hexdigest()[:8]
         row_cols = st.columns(col_widths)
-        row_cols[0].markdown(f"<div style='height: 38px; display: flex; align-items: center; font-size: 13px; font-weight: 500;'>{dot_name}</div>", unsafe_allow_html=True)
+        row_cols[0].markdown(
+            f"<div style='height: 38px; display: flex; align-items: center; font-size: 13px; font-weight: 500;'>{dot_name}</div>",
+            unsafe_allow_html=True,
+        )
         
-        for idx, nguon in enumerate(unique_nguons, start=1):
-            if report_code:
-                input_code = get_r2_duplicate_code(nguon)
+        for idx, col_lbl in enumerate(column_labels, start=1):
+            if report_code and input_code_factory:
+                input_code = input_code_factory(col_lbl)
                 input_key = get_widget_key(report_code, input_code, str(dot_name))
                 draft_val = get_draft_value(report_code, str(dot_name), input_code, 0)
                 if input_key not in st.session_state:
@@ -337,35 +360,54 @@ def render_dot_nguon_matrix_inputs(title, state_key, unique_dots, unique_nguons,
                     "args": (report_code, str(dot_name), input_code, input_key),
                 }
             else:
-                nguon_hash = hashlib.md5(str(nguon).encode("utf-8")).hexdigest()[:6]
-                input_key = f"{key_prefix}_{dot_hash}_{nguon_hash}"
-                current_val = st.session_state.get(state_key, {}).get((str(dot_name), str(nguon)), 0)
+                col_hash = hashlib.md5(str(col_lbl).encode("utf-8")).hexdigest()[:6]
+                input_key = f"{key_prefix}_{dot_hash}_{col_hash}"
+                current_val = st.session_state.get(state_key, {}).get((str(dot_name), str(col_lbl)), 0)
                 if input_key not in st.session_state:
                     st.session_state[input_key] = int(current_val)
                 on_change_kw = {}
                 
             val = row_cols[idx].number_input(
-                f"{dot_name}_{nguon}",
-                min_value=0,
-                step=1,
-                format="%d",
+                f"{dot_name}_{col_lbl}_{key_prefix}",
+                min_value=min_value,
+                step=step,
+                format=number_format,
                 key=input_key,
                 label_visibility="collapsed",
                 **on_change_kw,
             )
             
-            if report_code:
+            if report_code and input_code_factory:
                 set_draft_value(report_code, str(dot_name), input_code, int(val))
 
-            st.session_state[state_key][(str(dot_name), str(nguon))] = val
+            st.session_state[state_key][(str(dot_name), str(col_lbl))] = val
             manual_rows.append({
                 DOT_COLUMN: dot_name,
-                'Nguồn': nguon,
-                'Data trùng': val
+                'Nguồn': col_lbl,
+                value_column: val,
             })
             
     manual_df = pd.DataFrame(manual_rows)
     return manual_df, hash_dot_manual_df(manual_df)
+
+
+def render_dot_nguon_matrix_inputs(title, state_key, unique_dots, unique_nguons, key_prefix="r2_trung", report_code=REPORT_2_CODE):
+    """
+    Render bảng nhập Data trùng dạng ma trận (mỗi dòng là 1 Đợt, các cột là các Nguồn).
+    Tích hợp với bản nháp (draft) trong phiên, tự động đồng bộ khi gõ số.
+    Wrapper tương thích cho Báo cáo 2.
+    """
+    return render_dot_metric_matrix_inputs(
+        title=title,
+        state_key=state_key,
+        unique_dots=unique_dots,
+        column_labels=unique_nguons,
+        report_code=report_code,
+        input_code_factory=get_r2_duplicate_code,
+        value_column="Data trùng",
+        key_prefix=key_prefix,
+    )
+
 
 
 # ==========================================
@@ -591,6 +633,180 @@ def render_excel_download_multi_sheets(sheets, file_name, button_label):
         file_name=file_name,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+
+def _format_excel_cell(cell, val, fmt_type, is_bold, normal_font, bold_font, border):
+    cell.font = bold_font if is_bold else normal_font
+    cell.border = border
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        cell.value = ""
+        return
+
+    if fmt_type == "float":
+        try:
+            cell.value = float(val)
+            cell.number_format = '0.00'
+        except (ValueError, TypeError):
+            cell.value = 0.0
+            cell.number_format = '0.00'
+    elif fmt_type == "pct":
+        try:
+            # Giá trị trong df là 0-100 (vd 20.0). Trong Excel format 0.00%, giá trị số là 0.20
+            cell.value = float(val) / 100.0
+            cell.number_format = '0.00%'
+        except (ValueError, TypeError):
+            cell.value = 0.0
+            cell.number_format = '0.00%'
+    elif fmt_type == "currency_int":
+        try:
+            cell.value = int(round(float(val)))
+            cell.number_format = '#,##0'
+        except (ValueError, TypeError):
+            cell.value = 0
+            cell.number_format = '#,##0'
+    elif fmt_type == "currency_float":
+        try:
+            cell.value = float(val)
+            cell.number_format = '#,##0.00'
+        except (ValueError, TypeError):
+            cell.value = 0.0
+            cell.number_format = '#,##0.00'
+    else:
+        cell.value = str(val)
+
+
+def build_report_5_excel_bytes(sheets, file_name):
+    """
+    Tạo file Excel chuyên biệt cho Báo cáo 5 với 2 hàng header:
+    - Hàng 1: Nhóm cột (merge các cột con tương ứng; cột đơn merge hàng 1-2).
+    - Hàng 2: Tên cột con.
+    - Cố định 2 hàng header và 2 cột đầu (freeze_panes = 'C3').
+    - Bật AutoFilter.
+    - Dòng TỔNG CỘNG in đậm.
+    """
+    cache = st.session_state.setdefault('_excel_download_cache', {})
+    key = file_name
+    cached = cache.get(key)
+    if cached is not None:
+        cached_sheets = cached.get('sheets', [])
+        if len(cached_sheets) == len(sheets) and all(
+            name == c_name and df.equals(c_df)
+            for (name, df), (c_name, c_df) in zip(sheets, cached_sheets)
+        ):
+            return cached['data']
+
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from report_5_schema import get_report_5_column_specs, FIELD_TIME
+    from report_calculations import aggregate_report_5_rows
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    header_fill = PatternFill(start_color="E8F0FE", end_color="E8F0FE", fill_type="solid")
+    header_group_fill = PatternFill(start_color="D2E3FC", end_color="D2E3FC", fill_type="solid")
+    bold_font = Font(name="Calibri", size=11, bold=True)
+    normal_font = Font(name="Calibri", size=11)
+    thin_border = Border(
+        left=Side(style='thin', color='D3D3D3'),
+        right=Side(style='thin', color='D3D3D3'),
+        top=Side(style='thin', color='D3D3D3'),
+        bottom=Side(style='thin', color='D3D3D3')
+    )
+
+    specs = get_report_5_column_specs()
+    flat_cols = []
+    for grp_name, children in specs:
+        for child_name, field_key, fmt_type, width in children:
+            flat_cols.append((child_name, field_key, fmt_type, width, grp_name))
+
+    for sheet_name, df_table in sheets:
+        ws = wb.create_sheet(title=sheet_name)
+        ws.views.sheetView[0].showGridLines = True
+
+        col_idx = 1
+        for grp_name, children in specs:
+            start_col = col_idx
+            num_children = len(children)
+            end_col = start_col + num_children - 1
+
+            if grp_name is None:
+                for child_name, _, _, _ in children:
+                    c1 = ws.cell(row=1, column=col_idx, value=child_name)
+                    c1.font = bold_font
+                    c1.fill = header_fill
+                    c1.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                    c1.border = thin_border
+
+                    c2 = ws.cell(row=2, column=col_idx, value="")
+                    c2.border = thin_border
+                    ws.merge_cells(start_row=1, start_column=col_idx, end_row=2, end_column=col_idx)
+                    col_idx += 1
+            else:
+                for c_in_grp in range(start_col, end_col + 1):
+                    cell = ws.cell(row=1, column=c_in_grp)
+                    cell.border = thin_border
+                    cell.fill = header_group_fill
+                c_grp = ws.cell(row=1, column=start_col, value=grp_name)
+                c_grp.font = bold_font
+                c_grp.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                ws.merge_cells(start_row=1, start_column=start_col, end_row=1, end_column=end_col)
+
+                for child_name, _, _, _ in children:
+                    c_child = ws.cell(row=2, column=col_idx, value=child_name)
+                    c_child.font = bold_font
+                    c_child.fill = header_fill
+                    c_child.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                    c_child.border = thin_border
+                    col_idx += 1
+
+        current_row = 3
+        if df_table is not None and not df_table.empty:
+            for _, row_data in df_table.iterrows():
+                for c_idx, (_, field_key, fmt_type, _, _) in enumerate(flat_cols, start=1):
+                    cell = ws.cell(row=current_row, column=c_idx)
+                    val = row_data.get(field_key)
+                    _format_excel_cell(cell, val, fmt_type, is_bold=False, normal_font=normal_font, bold_font=bold_font, border=thin_border)
+                current_row += 1
+
+            time_val = df_table[FIELD_TIME].iloc[0] if len(df_table) > 0 else ""
+            tot_row = aggregate_report_5_rows(df_table, time_val, "TỔNG CỘNG")
+            for c_idx, (_, field_key, fmt_type, _, _) in enumerate(flat_cols, start=1):
+                cell = ws.cell(row=current_row, column=c_idx)
+                val = tot_row.get(field_key)
+                _format_excel_cell(cell, val, fmt_type, is_bold=True, normal_font=normal_font, bold_font=bold_font, border=thin_border)
+            current_row += 1
+
+        for c_idx, (_, _, _, width, _) in enumerate(flat_cols, start=1):
+            col_letter = get_column_letter(c_idx)
+            ws.column_dimensions[col_letter].width = max(12, int(width / 7.5))
+
+        ws.freeze_panes = "C3"
+        total_cols = len(flat_cols)
+        data_end_row = max(current_row - 1, 2)
+        ws.auto_filter.ref = f"A2:{get_column_letter(total_cols)}{data_end_row}"
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    data = buffer.getvalue()
+    cache[key] = {
+        'sheets': [(name, df.copy()) for name, df in sheets],
+        'data': data,
+    }
+    return data
+
+
+def render_report_5_excel_download(sheets, file_name, button_label):
+    """1 nút download riêng cho Báo cáo 5 với định dạng 2 hàng header và number formatting."""
+    st.download_button(
+        label=button_label,
+        data=build_report_5_excel_bytes(sheets, file_name),
+        file_name=file_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="btn_download_excel_report_5",
+    )
+
 
 
 

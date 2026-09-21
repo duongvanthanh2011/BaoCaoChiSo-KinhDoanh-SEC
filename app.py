@@ -243,4 +243,5 @@ if st.session_state["raw_df"] is not None:
         render_report_4(result_4)
 
     with tab5:
-        render_report_5(result_5)
+        effective_sessions = selected_sessions if selected_sessions else unique_sessions
+        render_report_5(result_5, effective_sessions, repository=repo)

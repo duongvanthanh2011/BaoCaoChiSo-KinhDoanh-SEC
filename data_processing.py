@@ -397,6 +397,79 @@ def expand_report_4_sources_with_weights(account_source_details):
 
 
 # ==========================================
+# PHÂN LOẠI & MỞ RỘNG NGUỒN CHO BÁO CÁO 5
+# ==========================================
+
+_RE_R5_ADS_START = re.compile(r"^ADS\b")
+_RE_R5_EXCLUDE_WORDS = re.compile(r"\b(ORG|STAFF)\b")
+_RE_R5_FB_NORMAL = re.compile(r"^ADS\b.*\bFB([1-6])$")
+_RE_R5_FB_CV_OFF = re.compile(r"^ADS\b.*\bCV\s+OFF\s*([1-6])$")
+_RE_R5_SV1_END = re.compile(r"^ADS\b.*\bSV1$")
+_RE_R5_SV_OFFLINE = re.compile(r"\bSINH VIEN OFFLINE\s*([1-6])\b")
+_RE_R5_GG = re.compile(r"^ADS\b.*\bGG([1-6])$")
+
+
+def classify_report_5_source(label):
+    """
+    Phân loại nguồn riêng cho Báo cáo 5.
+    Trả về (channel, tc) với channel in ('facebook', 'google') và tc in ('TC1', ..., 'TC6').
+    Trả về None nếu không khớp.
+    """
+    if not isinstance(label, str) or not label.strip():
+        return None
+    norm = _normalize_source_label(label)
+    if not _RE_R5_ADS_START.search(norm):
+        return None
+    if _RE_R5_EXCLUDE_WORDS.search(norm):
+        return None
+
+    # Google: ^ADS\b.*\bGG([1-6])$ -> GG1..GG6 -> TC1..TC6
+    m = _RE_R5_GG.search(norm)
+    if m:
+        return ("google", f"TC{m.group(1)}")
+
+    # Facebook thông thường: ^ADS\b.*\bFB([1-6])$ -> FB1..FB6 -> TC1..TC6
+    m = _RE_R5_FB_NORMAL.search(norm)
+    if m:
+        return ("facebook", f"TC{m.group(1)}")
+
+    # Facebook CV OFF: ^ADS\b.*\bCV\s+OFF\s*([1-6])$ -> TC1..TC6
+    m = _RE_R5_FB_CV_OFF.search(norm)
+    if m:
+        return ("facebook", f"TC{m.group(1)}")
+
+    # Facebook Sinh viên offline kết thúc SV1
+    if _RE_R5_SV1_END.search(norm):
+        m = _RE_R5_SV_OFFLINE.search(norm)
+        if m:
+            return ("facebook", f"TC{m.group(1)}")
+
+    return None
+
+
+def expand_report_5_sources_with_weights(account_source_details):
+    """
+    Chia 1/N cho mọi nguồn gốc (N = len(account_source_details)).
+    Chỉ giữ lại các nguồn khớp Báo cáo 5, dạng tuple: (channel, tc, weight).
+    """
+    if not isinstance(account_source_details, list) or not account_source_details:
+        return []
+    total_sources = len(account_source_details)
+    if total_sources == 0:
+        return []
+    weight = 1.0 / total_sources
+    result = []
+    for item in account_source_details:
+        label = item.get("label", "") if isinstance(item, dict) else (item if isinstance(item, str) else "")
+        matched = classify_report_5_source(label)
+        if matched:
+            channel, tc = matched
+            result.append((channel, tc, weight))
+    return result
+
+
+
+# ==========================================
 # PHÂN BỔ TRỌNG SỐ CHO CÁC NGUỒN
 # ==========================================
 
@@ -519,6 +592,9 @@ def transform_dataframe(df, src_ids, type_ids, account_types_list, users_list=No
     )
     df["_report_4_sources_with_weights"] = source_details.apply(
         expand_report_4_sources_with_weights
+    )
+    df["_report_5_sources_with_weights"] = source_details.apply(
+        expand_report_5_sources_with_weights
     )
 
     return df

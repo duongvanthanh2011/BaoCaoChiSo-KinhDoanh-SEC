@@ -875,108 +875,140 @@ def configure_report4_grid_columns(gb):
 
 
 # ==========================================
-# JS GETTERS & CẤU HÌNH CỘT CHO BÁO CÁO 5 (TRUYỀN THÔNG)
+# JS FORMATTERS & CẤU HÌNH CỘT CHO BÁO CÁO 5 (TRUYỀN THÔNG)
 # ==========================================
 
-def make_r5_data_per_bill_getter(group_name):
-    """Tạo JsCode tính Data/Bill cho một nhóm tuổi hoặc TỔNG."""
-    d_col = f"{group_name}_Data"
-    b_col = f"{group_name}_Bill cọc"
-    return JsCode(f"""
-function(params) {{
-    var total = 0, bill = 0;
-    if (params.node && params.node.rowPinned) {{
-        total = params.data ? (params.data['{d_col}'] || 0) : 0;
-        bill = params.data ? (params.data['{b_col}'] || 0) : 0;
-    }} else if (params.node && (params.node.group || params.node.footer)) {{
-        total = params.node.aggData ? (params.node.aggData['{d_col}'] || 0) : 0;
-        bill = params.node.aggData ? (params.node.aggData['{b_col}'] || 0) : 0;
-    }} else {{
-        total = params.data ? (params.data['{d_col}'] || 0) : 0;
-        bill = params.data ? (params.data['{b_col}'] || 0) : 0;
-    }}
-    return bill > 0 ? (total / bill) : 0;
-}}
+formatter_r5_number = JsCode("""
+function(params) {
+    var val = params.value;
+    if (val === undefined || val === null || val === '') return '0.00';
+    var num = Number(val);
+    if (isNaN(num)) return val;
+    return num.toFixed(2);
+}
 """)
 
-
-def make_r5_bill_per_data_getter(group_name):
-    """Tạo JsCode tính Bill/Data (%) cho một nhóm tuổi hoặc TỔNG."""
-    d_col = f"{group_name}_Data"
-    b_col = f"{group_name}_Bill cọc"
-    return JsCode(f"""
-function(params) {{
-    var total = 0, bill = 0;
-    if (params.node && params.node.rowPinned) {{
-        total = params.data ? (params.data['{d_col}'] || 0) : 0;
-        bill = params.data ? (params.data['{b_col}'] || 0) : 0;
-    }} else if (params.node && (params.node.group || params.node.footer)) {{
-        total = params.node.aggData ? (params.node.aggData['{d_col}'] || 0) : 0;
-        bill = params.node.aggData ? (params.node.aggData['{b_col}'] || 0) : 0;
-    }} else {{
-        total = params.data ? (params.data['{d_col}'] || 0) : 0;
-        bill = params.data ? (params.data['{b_col}'] || 0) : 0;
-    }}
-    return total > 0 ? (bill / total * 100) : 0;
-}}
+formatter_currency_int = JsCode("""
+function(params) {
+    var val = params.value;
+    if (val === undefined || val === null || val === '') return '0';
+    var num = Number(val);
+    if (isNaN(num)) return val;
+    return Math.round(num).toLocaleString('en-US');
+}
 """)
 
-
-def _get_r5_js_getters():
-    from data_processing import AGE_GROUPS
-    all_groups = AGE_GROUPS + ['TỔNG']
-    d_getters = {g: make_r5_data_per_bill_getter(g) for g in all_groups}
-    b_getters = {g: make_r5_bill_per_data_getter(g) for g in all_groups}
-    return d_getters, b_getters
-
-
-_R5_DATA_GETTERS, _R5_BILL_GETTERS = None, None
+formatter_currency_float = JsCode("""
+function(params) {
+    var val = params.value;
+    if (val === undefined || val === null || val === '') return '0.00';
+    var num = Number(val);
+    if (isNaN(num)) return val;
+    return num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+""")
 
 
 def configure_report5_grid_columns(gb):
     """
-    Cấu hình các cột cho Báo cáo 5: Nguồn Onl/Off × Nhóm tuổi (Truyền Thông).
-    Gồm 2 cột cố định bên trái (Thời gian xuất data, Nguồn) và 8 nhóm cột (7 nhóm tuổi + 1 TỔNG),
-    mỗi nhóm chứa 4 cột con: Data, Bill cọc, Data/Bill, Bill/Data (%).
+    Cấu hình các cột cho Báo cáo 5: Truyền Thông (Facebook & Google × Độ Tuổi).
+    Gồm 2 cột cố định bên trái (Thời gian xuất data, Nguồn), nhóm Data sai số,
+    nhóm Chi phí, và các nhóm tuổi (6 nhóm tuổi + 1 TỔNG).
     """
-    global _R5_DATA_GETTERS, _R5_BILL_GETTERS
-    from data_processing import AGE_GROUPS
-
-    if _R5_DATA_GETTERS is None or _R5_BILL_GETTERS is None:
-        _R5_DATA_GETTERS, _R5_BILL_GETTERS = _get_r5_js_getters()
+    from report_5_schema import (
+        REPORT_5_DISPLAY_GROUPS,
+        FIELD_TIME,
+        FIELD_SOURCE,
+        FIELD_ERROR_COUNT,
+        FIELD_ERROR_PERCENT,
+        FIELD_COST_TOTAL,
+        FIELD_COST_PER_VALID_DATA,
+        FIELD_COST_PER_BILL,
+        age_data_field,
+        age_bill_field,
+        age_ratio_field,
+        close_ratio_field,
+        bill_share_field,
+    )
 
     gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
 
     col_defs = {
         'Thời gian xuất data': {
             'headerName': 'Thời gian xuất data',
-            'field': 'Thời gian xuất data',
+            'field': FIELD_TIME,
             'width': 140,
             'pinned': 'left',
         },
         'Nguồn': {
             'headerName': 'Nguồn',
-            'field': 'Nguồn',
-            'width': 200,
+            'field': FIELD_SOURCE,
+            'width': 100,
             'pinned': 'left',
+        },
+        'Data sai số': {
+            'headerName': 'Data sai số',
+            'children': [
+                {
+                    'headerName': 'SL data sai số',
+                    'field': FIELD_ERROR_COUNT,
+                    'width': 120,
+                    'valueFormatter': formatter_r5_number,
+                },
+                {
+                    'headerName': 'Phần trăm data sai số trên Tổng data',
+                    'field': FIELD_ERROR_PERCENT,
+                    'width': 165,
+                    'valueFormatter': pct_formatter,
+                },
+            ],
+        },
+        'Chi phí': {
+            'headerName': 'Chi phí',
+            'children': [
+                {
+                    'headerName': 'Tổng chi phí',
+                    'field': FIELD_COST_TOTAL,
+                    'width': 130,
+                    'valueFormatter': formatter_currency_int,
+                },
+                {
+                    'headerName': 'Chi phí/Data hợp lệ',
+                    'field': FIELD_COST_PER_VALID_DATA,
+                    'width': 150,
+                    'valueFormatter': formatter_currency_float,
+                },
+                {
+                    'headerName': 'Chi phí/Bill',
+                    'field': FIELD_COST_PER_BILL,
+                    'width': 130,
+                    'valueFormatter': formatter_currency_float,
+                },
+            ],
         },
     }
 
-    for group in AGE_GROUPS + ['TỔNG']:
+    for group in REPORT_5_DISPLAY_GROUPS:
         is_tong = (group == 'TỔNG')
         cell_style = {'fontWeight': 'bold'} if is_tong else None
 
-        def _make_child(name, field, width, **kwargs):
-            c = {'headerName': name, 'field': field, 'width': width, **kwargs}
+        def _make_child(name, field, width, formatter):
+            c = {
+                'headerName': name,
+                'field': field,
+                'width': width,
+                'valueFormatter': formatter,
+            }
             if cell_style:
                 c['cellStyle'] = cell_style
             return c
 
         children = [
-            _make_child('Data', f"{group}_Data", 95, aggFunc='sum', valueFormatter=formatter_float_2_decimals),
-            _make_child('Bill cọc', f"{group}_Bill cọc", 95, aggFunc='sum', valueFormatter=formatter_float_2_decimals),
-            _make_child('Data/Bill', f"{group}_Data/Bill", 95, valueGetter=_R5_DATA_GETTERS[group], valueFormatter=formatter_float_2_decimals),
-            _make_child('Bill/Data (%)', f"{group}_Bill/Data (%)", 110, valueGetter=_R5_BILL_GETTERS[group], valueFormatter=pct_formatter),
+            _make_child('SL Data', age_data_field(group), 95, formatter_r5_number),
+            _make_child('Tổng tỉ lệ độ tuổi', age_ratio_field(group), 135, pct_formatter),
+            _make_child('Bills', age_bill_field(group), 90, formatter_r5_number),
+            _make_child('Tỉ lệ chốt', close_ratio_field(group), 110, pct_formatter),
+            _make_child('%Bills', bill_share_field(group), 100, pct_formatter),
         ]
 
         col_defs[group] = {
