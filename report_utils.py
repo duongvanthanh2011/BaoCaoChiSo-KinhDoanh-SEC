@@ -335,7 +335,7 @@ function(params) {
     var val = params.value;
     if (val === undefined || val === null || isNaN(val)) return {};
     if (val >= 95 && val <= 105) return {'backgroundColor':'#ccffcc'};
-    return {'backgroundColor':'#fff2cc'};
+    return {'backgroundColor':'#ffcccc'};
 }
 """)
 
@@ -616,6 +616,50 @@ function(params) {
 # ==========================================
 # HÀM TIỆN ÍCH DÙNG CHUNG CHO BẢNG AGGRID
 # ==========================================
+
+def render_report_color_legend(report_number):
+    """Hiển thị bảng chú giải các ngưỡng màu KPI của Báo cáo 1 hoặc 2."""
+    if report_number == 1:
+        rows = """
+            <tr><td>Sai số - Sai đối tượng</td><td><span class="legend-swatch green"></span>&lt; 3%</td><td><span class="legend-swatch yellow"></span>3% đến 7%</td><td><span class="legend-swatch red"></span>&gt; 7%</td></tr>
+            <tr><td>Data tiềm năng chưa gọi</td><td><span class="legend-swatch green"></span>= 0%</td><td>-</td><td><span class="legend-swatch red"></span>&gt; 0%</td></tr>
+            <tr><td>Data chưa trao đổi + Auto Call</td><td colspan="3">Không tô màu</td></tr>
+            <tr><td>Data trao đổi được</td><td><span class="legend-swatch green"></span>&ge; 60%</td><td><span class="legend-swatch yellow"></span>50% đến &lt; 60%</td><td><span class="legend-swatch red"></span>&lt; 50%</td></tr>
+            <tr><td>Data tiềm năng</td><td><span class="legend-swatch green"></span>&ge; 30%</td><td><span class="legend-swatch yellow"></span>25% đến &lt; 30%</td><td><span class="legend-swatch red"></span>&lt; 25%</td></tr>
+            <tr><td>Data cọc chốt</td><td><span class="legend-swatch green"></span>&ge; 15%</td><td><span class="legend-swatch yellow"></span>12% đến &lt; 15%</td><td><span class="legend-swatch red"></span>&lt; 12%</td></tr>
+            <tr><td>Tỷ lệ tổng cọc buổi học thử</td><td><span class="legend-swatch green"></span>&ge; 10%</td><td><span class="legend-swatch yellow"></span>7% đến &lt; 10%</td><td><span class="legend-swatch red"></span>&lt; 7%</td></tr>
+        """
+        title = "📝 Ghi chú màu KPI - Báo cáo 1"
+    elif report_number == 2:
+        rows = """
+            <tr><td>Tỷ lệ data thực tế/data order</td><td><span class="legend-swatch green"></span>95% đến 105%</td><td>-</td><td><span class="legend-swatch red"></span>&lt; 95% hoặc &gt; 105%</td></tr>
+        """
+        title = "📝 Ghi chú màu KPI - Báo cáo 2"
+    else:
+        raise ValueError("report_number chỉ hỗ trợ 1 hoặc 2")
+
+    st.markdown(
+        f"""
+        <style>
+            .report-color-legend {{ margin: 4px 0 12px; font-size: 14px; }}
+            .report-color-legend table {{ width: 100%; border-collapse: collapse; }}
+            .report-color-legend th, .report-color-legend td {{ border: 1px solid #d9d9d9; padding: 7px 10px; text-align: left; }}
+            .report-color-legend th {{ background: #f5f7fa; }}
+            .legend-swatch {{ display: inline-block; width: 14px; height: 14px; margin-right: 5px; vertical-align: -2px; border: 1px solid #c7c7c7; border-radius: 2px; }}
+            .legend-swatch.green {{ background: #ccffcc; }}
+            .legend-swatch.yellow {{ background: #fff2cc; }}
+            .legend-swatch.red {{ background: #ffcccc; }}
+        </style>
+        <div class="report-color-legend">
+            <b>{title}</b>
+            <table>
+                <thead><tr><th>Chỉ tiêu</th><th>Xanh</th><th>Vàng</th><th>Đỏ</th></tr></thead>
+                <tbody>{rows}</tbody>
+            </table>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 def configure_standard_grid_columns(gb, count_cols):
     """

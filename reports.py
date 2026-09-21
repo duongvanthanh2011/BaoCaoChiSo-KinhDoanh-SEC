@@ -22,6 +22,7 @@ from report_utils import (
     configure_report3_grid_columns,
     configure_report4_grid_columns,
     configure_report5_grid_columns,
+    render_report_color_legend,
 )
 from report_components import (
     manual_input_expander,
@@ -190,6 +191,9 @@ def render_report_1(result, repository=None):
             'Tổng Cọc Học Thử': total_tong_coc,
         }
 
+    # Chú giải các ngưỡng màu KPI trước khi hiển thị bảng.
+    render_report_color_legend(1)
+
     # Hiển thị AgGrid
     render_aggrid_report(df_to_show, gb, pinned_row, f"grid_report_1_v3_{manual_hash}")
 
@@ -351,6 +355,9 @@ def render_report_2(result_2, repository=None):
             },
             data_average_value=grand_average,
         )
+
+    # Chú giải các ngưỡng màu KPI trước khi hiển thị bảng.
+    render_report_color_legend(2)
 
     # Hiển thị AgGrid
     render_aggrid_report(df_to_show, gb, pinned_row, f"grid_report_2_v3_{manual_hash}")
