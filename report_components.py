@@ -592,6 +592,90 @@ def render_excel_download(df_excel, sheet_name, file_name, button_label):
     )
 
 
+def build_report_3_excel_bytes(df_excel, file_name):
+    """Tạo Excel BC3 có header hai tầng giống bố cục nhóm cột trên giao diện."""
+    cache = st.session_state.setdefault('_excel_download_cache', {})
+    cached = cache.get(file_name)
+    if cached is not None and cached.get('frame') is not None and cached['frame'].equals(df_excel):
+        return cached['data']
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from report_calculations import get_report_3_column_specs
+
+    header_fill = PatternFill(start_color='E8F0FE', end_color='E8F0FE', fill_type='solid')
+    group_fill = PatternFill(start_color='D2E3FC', end_color='D2E3FC', fill_type='solid')
+    bold_font = Font(name='Calibri', size=11, bold=True)
+    normal_font = Font(name='Calibri', size=11)
+    border = Border(*[Side(style='thin', color='D3D3D3')] * 4)
+    specs = get_report_3_column_specs()
+    flat_cols = [
+        (child_name, field, fmt_type, width)
+        for _, children in specs for child_name, field, fmt_type, width in children
+    ]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'BC_Nguon_Tuoi'
+    col_idx = 1
+    for group_name, children in specs:
+        start_col = col_idx
+        end_col = start_col + len(children) - 1
+        if group_name is None:
+            for child_name, _, _, _ in children:
+                cell = ws.cell(1, col_idx, child_name)
+                cell.font = bold_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                cell.border = border
+                ws.cell(2, col_idx).border = border
+                ws.merge_cells(start_row=1, start_column=col_idx, end_row=2, end_column=col_idx)
+                col_idx += 1
+        else:
+            for current_col in range(start_col, end_col + 1):
+                ws.cell(1, current_col).fill = group_fill
+                ws.cell(1, current_col).border = border
+            cell = ws.cell(1, start_col, group_name)
+            cell.font = bold_font
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            ws.merge_cells(start_row=1, start_column=start_col, end_row=1, end_column=end_col)
+            for child_name, _, _, _ in children:
+                cell = ws.cell(2, col_idx, child_name)
+                cell.font = bold_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                cell.border = border
+                col_idx += 1
+
+    for row_idx, (_, row_data) in enumerate(df_excel.iterrows(), start=3):
+        is_total = str(row_data.get('ĐỢT HỌC THỬ', '')).startswith('TỔNG')
+        for col_idx, (_, field, fmt_type, _) in enumerate(flat_cols, start=1):
+            cell = ws.cell(row_idx, col_idx)
+            _format_excel_cell(cell, row_data.get(field), fmt_type, is_total, normal_font, bold_font, border)
+
+    for col_idx, (_, _, _, width) in enumerate(flat_cols, start=1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = max(12, int(width / 7.5))
+    ws.freeze_panes = 'D3'
+    ws.auto_filter.ref = f"A2:{get_column_letter(len(flat_cols))}{max(2, len(df_excel) + 2)}"
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    data = buffer.getvalue()
+    cache[file_name] = {'frame': df_excel.copy(), 'data': data}
+    return data
+
+
+def render_report_3_excel_download(df_excel, file_name, button_label):
+    """Nút tải Excel BC3 với header nhóm tuổi hai tầng."""
+    st.download_button(
+        label=button_label,
+        data=build_report_3_excel_bytes(df_excel, file_name),
+        file_name=file_name,
+        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+
+
 def get_excel_bytes_multi_sheets(sheets, file_name):
     """
     Giữ một file gần nhất mỗi báo cáo nhiều sheet trong phiên.

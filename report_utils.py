@@ -412,6 +412,87 @@ class CellRenderer {
 }
 """)
 
+
+formatter_r3_data = JsCode("""
+class CellRenderer {
+    init(params) {
+        this.eGui = document.createElement('span');
+        var field = params.colDef.field;
+        var value = params.value;
+        var total = 0;
+        if (params.node && params.node.rowPinned) {
+            value = (value === undefined || value === null) ? (params.data ? params.data[field] : 0) : value;
+            total = params.data ? (params.data['TỔNG'] || 0) : 0;
+        } else if (params.node && (params.node.group || params.node.footer) && params.node.aggData) {
+            value = (value === undefined || value === null) ? (params.node.aggData[field] || 0) : value;
+            total = params.node.aggData['TỔNG'] || 0;
+        } else {
+            value = (value === undefined || value === null) ? (params.data ? params.data[field] : 0) : value;
+            total = params.data ? (params.data['TỔNG'] || 0) : 0;
+        }
+        var number = Number(value) || 0;
+        var numberText = number % 1 === 0 ? number.toString() : number.toFixed(2);
+        var percent = total > 0 ? number / total * 100 : 0;
+        this.eGui.innerHTML = numberText + ' (' + percent.toFixed(2) + '%)';
+    }
+    getGui() { return this.eGui; }
+}
+""")
+
+
+formatter_r3_bills = JsCode("""
+class CellRenderer {
+    init(params) {
+        this.eGui = document.createElement('span');
+        var field = params.colDef.field;
+        var value = params.value;
+        var totalBills = 0;
+        if (params.node && params.node.rowPinned) {
+            value = (value === undefined || value === null) ? (params.data ? params.data[field] : 0) : value;
+            totalBills = params.data ? (params.data['TỔNG (Cọc Chốt)'] || 0) : 0;
+        } else if (params.node && (params.node.group || params.node.footer) && params.node.aggData) {
+            value = (value === undefined || value === null) ? (params.node.aggData[field] || 0) : value;
+            totalBills = params.node.aggData['TỔNG (Cọc Chốt)'] || 0;
+        } else {
+            value = (value === undefined || value === null) ? (params.data ? params.data[field] : 0) : value;
+            totalBills = params.data ? (params.data['TỔNG (Cọc Chốt)'] || 0) : 0;
+        }
+        var number = Number(value) || 0;
+        var numberText = number % 1 === 0 ? number.toString() : number.toFixed(2);
+        var percent = totalBills > 0 ? number / totalBills * 100 : 0;
+        this.eGui.innerHTML = numberText + ' (' + percent.toFixed(2) + '%)';
+    }
+    getGui() { return this.eGui; }
+}
+""")
+
+
+getter_r3_close_rate = JsCode("""
+function(params) {
+    var dataField = params.colDef.dataField;
+    var billsField = params.colDef.billsField;
+    var source = (params.node && (params.node.rowPinned || params.node.group || params.node.footer))
+        ? (params.node.rowPinned ? params.data : params.node.aggData)
+        : params.data;
+    var data = source ? Number(source[dataField] || 0) : 0;
+    var bills = source ? Number(source[billsField] || 0) : 0;
+    return data > 0 ? bills / data * 100 : 0;
+}
+""")
+
+
+getter_r3_bills_over_total_data = JsCode("""
+function(params) {
+    var billsField = params.colDef.billsField;
+    var source = (params.node && (params.node.rowPinned || params.node.group || params.node.footer))
+        ? (params.node.rowPinned ? params.data : params.node.aggData)
+        : params.data;
+    var bills = source ? Number(source[billsField] || 0) : 0;
+    var total = source ? Number(source['TỔNG'] || 0) : 0;
+    return total > 0 ? bills / total * 100 : 0;
+}
+""")
+
 style_r3_at_least_80_green = JsCode("""
 function(params) {
     var val = params.value;
@@ -808,7 +889,7 @@ def configure_report2_grid_columns(gb, count_cols=None):
 def configure_report3_grid_columns(gb):
     """
     Cấu hình các cột cho Báo cáo 3: Ma trận Nguồn × Nhóm tuổi.
-    Bao gồm 7 nhóm tuổi, cột TỔNG, và 3 nhóm gộp, tất cả đều hiển thị Số lượng (%).
+    Mỗi nhóm tuổi gồm Data (% Data), Bills (% Bills), Tỷ lệ chốt và Bills/Tổng Data.
     """
     # Cấu hình tự động xuống dòng cho header
     gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
@@ -820,51 +901,61 @@ def configure_report3_grid_columns(gb):
         REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
     )
 
-    for col in AGE_GROUPS:
-        gb.configure_column(
-            col,
-            aggFunc="sum",
-            cellRenderer=formatter_r3_age_group,
-            width=160
-        )
-
-    gb.configure_column(
-        "TỔNG",
-        aggFunc="sum",
-        cellRenderer=formatter_r3_tong,
-        width=160,
-        cellStyle={'fontWeight': 'bold'}
-    )
-
-    gb.configure_column(
-        REPORT_3_STUDENT_YOUNG_COLUMN,
-        aggFunc="sum",
-        cellRenderer=formatter_r3_age_group,
-        cellStyle=style_r3_at_least_80_green,
-        width=210,
-    )
-    gb.configure_column(
-        REPORT_3_SCHOOL_WORKER_COLUMN,
-        aggFunc="sum",
-        cellRenderer=formatter_r3_age_group,
-        cellStyle=style_r3_at_most_20_green,
-        width=210,
-    )
-    gb.configure_column(
-        REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
-        aggFunc="sum",
-        cellRenderer=formatter_r3_age_group,
-        cellStyle=style_r3_at_least_80_green,
-        width=230,
-    )
-
-    # 11 cột cọc chốt ẩn nhưng có aggFunc="sum" để tính aggData trong group footer cho formatter đọc
-    for col in AGE_GROUPS + ['TỔNG'] + [
+    col_defs = {
+        'Thời gian xuất data': {
+            'headerName': 'Thời gian xuất data', 'field': 'Thời gian xuất data',
+            'width': 140, 'pinned': 'left',
+        },
+        'Nguồn': {
+            'headerName': 'Nguồn', 'field': 'Nguồn', 'width': 200, 'pinned': 'left',
+        },
+    }
+    groups = AGE_GROUPS + ['TỔNG'] + [
         REPORT_3_STUDENT_YOUNG_COLUMN,
         REPORT_3_SCHOOL_WORKER_COLUMN,
         REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
-    ]:
-        gb.configure_column(f"{col}{COC_COL_SUFFIX}", hide=True, aggFunc="sum", width=100)
+    ]
+
+    style_by_group = {
+        REPORT_3_STUDENT_YOUNG_COLUMN: style_r3_at_least_80_green,
+        REPORT_3_SCHOOL_WORKER_COLUMN: style_r3_at_most_20_green,
+        REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN: style_r3_at_least_80_green,
+    }
+    for group in groups:
+        bills_field = f"{group}{COC_COL_SUFFIX}"
+        is_total = group == 'TỔNG'
+        child_style = {'fontWeight': 'bold'} if is_total else None
+        data_child = {
+            'headerName': 'Data (% Data)', 'field': group, 'aggFunc': 'sum',
+            'cellRenderer': formatter_r3_data, 'width': 130,
+        }
+        if group in style_by_group:
+            data_child['cellStyle'] = style_by_group[group]
+        elif child_style:
+            data_child['cellStyle'] = child_style
+
+        def child(header_name, field, width, **extra):
+            result = {'headerName': header_name, 'field': field, 'width': width}
+            result.update(extra)
+            if child_style:
+                result['cellStyle'] = child_style
+            return result
+
+        col_defs[group] = {
+            'headerName': group,
+            'children': [
+                data_child,
+                child('Bills (% Bills)', bills_field, 130, aggFunc='sum', cellRenderer=formatter_r3_bills),
+                child('Tỷ lệ chốt', f'{group}::close_rate', 110,
+                      valueGetter=getter_r3_close_rate, valueFormatter=pct_formatter,
+                      dataField=group, billsField=bills_field),
+                child('Bills / Tổng Data', f'{group}::bills_over_total_data', 135,
+                      valueGetter=getter_r3_bills_over_total_data, valueFormatter=pct_formatter,
+                      billsField=bills_field),
+            ],
+        }
+
+    gb._GridOptionsBuilder__grid_options['columnDefs'] = col_defs
 
 
 # ==========================================

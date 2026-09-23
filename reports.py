@@ -33,6 +33,7 @@ from report_components import (
     render_aggrid_report,
     render_excel_download,
     render_excel_download_multi_sheets,
+    render_report_3_excel_download,
     render_report_5_excel_download,
     assign_dot_manual_to_first_row,
     render_report_actions_bar,
@@ -412,10 +413,12 @@ def render_report_3(result_3):
             font-size: 14px;
             line-height: 1.6;
         ">
-            <b>📝 Ghi chú định dạng ô:</b><br>
-            Mỗi ô hiển thị: <b>Tổng data (%) </b> / <span style="color:#1565C0; font-weight:600">Cọc Chốt (%)</span><br>
-            &bull; <b>Phần trước "/"</b> — Tổng trọng số data theo Nguồn × Nhóm tuổi. <i>Mẫu số %</i> = TỔNG dòng (tất cả nhóm tuổi).<br>
-            &bull; <span style="color:#1565C0; font-weight:600">Phần sau "/"</span> — Chỉ tính data có Mối quan hệ: <code>ĐÃ CỌC</code>, <code>ĐÃ CHỐT FULL</code>, <code>ĐÃ CHỐT - TIỀM NĂNG UPSALE</code>. <i>Mẫu số %</i> = TỔNG Cọc Chốt dòng.
+            <b>📝 Ghi chú cách đọc các nhóm cột:</b><br>
+            &bull; <b>Data (% Data)</b> — tổng trọng số data của nhóm tuổi và tỷ trọng trên <i>TỔNG data</i> của cùng dòng.<br>
+            &bull; <b>Bills (% Bills)</b> — data có Mối quan hệ <code>ĐÃ CỌC</code>, <code>ĐÃ CHỐT FULL</code> hoặc <code>ĐÃ CHỐT - TIỀM NĂNG UPSALE</code>, cùng tỷ trọng trên <i>TỔNG Bills</i> của dòng.<br>
+            &bull; <b>Tỷ lệ chốt</b> = Bills của nhóm tuổi / Data của chính nhóm tuổi. Ví dụ: 3 Bills / 78 Data = 3,85%.<br>
+            &bull; <b>Bills / Tổng Data</b> = Bills của nhóm tuổi / TỔNG data của dòng. Ví dụ: 3 Bills / 675 Data = 0,44%.<br>
+            &bull; Các tỷ lệ ở dòng tổng theo đợt và <b>📊 TỔNG CỘNG</b> luôn tính lại từ tổng Bills và tổng Data, không cộng hoặc lấy trung bình các tỷ lệ.
         </div>
         """,
         unsafe_allow_html=True,
@@ -426,9 +429,8 @@ def render_report_3(result_3):
 
     # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
     df_excel = prepare_excel_report_3(df_to_show)
-    render_excel_download(
+    render_report_3_excel_download(
         df_excel,
-        sheet_name='BC_Nguon_Tuoi',
         file_name='Bao_cao_Nguon_Tuoi.xlsx',
         button_label='📥 Tải xuống Báo cáo 3 (Excel)'
     )

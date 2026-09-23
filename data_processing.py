@@ -406,6 +406,7 @@ _RE_R5_FB_NORMAL = re.compile(r"^ADS\b.*\bFB([1-6])$")
 _RE_R5_FB_CV_OFF = re.compile(r"^ADS\b.*\bCV\s+OFF\s*([1-6])$")
 _RE_R5_SV1_END = re.compile(r"^ADS\b.*\bSV1$")
 _RE_R5_SV_OFFLINE = re.compile(r"\bSINH VIEN OFFLINE\s*([1-6])\b")
+_RE_R5_FB_KOG = re.compile(r"^DATA KHONG GOI\b.*\bKOG([1-6])$")
 _RE_R5_GG = re.compile(r"^ADS\b.*\bGG([1-6])$")
 
 
@@ -418,9 +419,15 @@ def classify_report_5_source(label):
     if not isinstance(label, str) or not label.strip():
         return None
     norm = _normalize_source_label(label)
-    if not _RE_R5_ADS_START.search(norm):
-        return None
     if _RE_R5_EXCLUDE_WORDS.search(norm):
+        return None
+
+    # Facebook Data Không Gọi: ^DATA KHONG GOI.*KOG([1-6])$ -> TC1..TC6
+    m = _RE_R5_FB_KOG.search(norm)
+    if m:
+        return ("facebook", f"TC{m.group(1)}")
+
+    if not _RE_R5_ADS_START.search(norm):
         return None
 
     # Google: ^ADS\b.*\bGG([1-6])$ -> GG1..GG6 -> TC1..TC6

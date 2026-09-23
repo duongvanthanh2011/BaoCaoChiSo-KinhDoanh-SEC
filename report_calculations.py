@@ -59,6 +59,41 @@ REPORT_2_AVERAGE_COLUMN = 'Data trung bình/ngày/CVHT'
 COC_COL_SUFFIX = " (Cọc Chốt)"
 
 
+def _r3_data_display_field(group):
+    return f"{group}::data_display"
+
+
+def _r3_bills_display_field(group):
+    return f"{group}::bills_display"
+
+
+def _r3_close_rate_field(group):
+    return f"{group}::close_rate"
+
+
+def _r3_bills_over_total_data_field(group):
+    return f"{group}::bills_over_total_data"
+
+
+def get_report_3_column_specs():
+    """Cấu trúc header hai tầng dùng chung cho AgGrid và Excel của Báo cáo 3."""
+    from data_processing import AGE_GROUPS, REPORT_3_CONSOLIDATED_COLUMNS
+
+    specs = [(None, [
+        ('Thời gian xuất data', 'Thời gian xuất data', 'text', 140),
+        ('ĐỢT HỌC THỬ', 'ĐỢT HỌC THỬ', 'text', 160),
+        ('Nguồn', 'Nguồn', 'text', 200),
+    ])]
+    for group in AGE_GROUPS + ['TỔNG'] + REPORT_3_CONSOLIDATED_COLUMNS:
+        specs.append((group, [
+            ('Data (% Data)', _r3_data_display_field(group), 'text', 130),
+            ('Bills (% Bills)', _r3_bills_display_field(group), 'text', 130),
+            ('Tỷ lệ chốt', _r3_close_rate_field(group), 'pct', 110),
+            ('Bills / Tổng Data', _r3_bills_over_total_data_field(group), 'pct', 135),
+        ]))
+    return specs
+
+
 def get_cached_base_reports(raw_df, selected_sessions, revision):
     """Một bộ kết quả nền trong từng phiên; input không làm tính lại dữ liệu CRM."""
     sessions = tuple(sorted(set(str(s) for s in selected_sessions)))
@@ -749,6 +784,15 @@ def aggregate_report_3_rows(df_rows, time_val, dot_val, nguon_val):
     return row_dict
 
 
+def _format_r3_value(value):
+    """Hiển thị số trọng số BC3: số nguyên hoặc tối đa 2 chữ số thập phân."""
+    try:
+        number = float(value) if pd.notna(value) else 0.0
+    except (ValueError, TypeError):
+        number = 0.0
+    return str(int(number)) if number.is_integer() else f"{number:.2f}"
+
+
 def _format_r3_excel_cell(val, tong, coc_val, coc_tong):
     """
     Format ô Báo cáo 3 cho Excel theo dạng: 'num (pct%) / cocNum (cocPct%)'.
@@ -786,13 +830,9 @@ def _format_r3_excel_cell(val, tong, coc_val, coc_tong):
 
 
 def prepare_excel_report_3(df_report_3):
-    """Chuẩn bị DataFrame hoàn chỉnh cho Report 3 để xuất Excel (bao gồm dòng tổng đợt, tổng cộng và gộp chuỗi cọc chốt)."""
-    out_cols = (
-        ['Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn']
-        + AGE_GROUPS
-        + ['TỔNG']
-        + REPORT_3_CONSOLIDATED_COLUMNS
-    )
+    """Chuẩn bị dữ liệu Excel BC3 với 4 chỉ số con trong từng nhóm tuổi."""
+    specs = get_report_3_column_specs()
+    out_cols = [field for _, children in specs for _, field, _, _ in children]
     if df_report_3.empty:
         return pd.DataFrame(columns=out_cols)
         
@@ -803,25 +843,7 @@ def prepare_excel_report_3(df_report_3):
         aggregate_fn=aggregate_report_3_rows
     )
     
-    # Thu thập TỔNG và TỔNG (Cọc Chốt) của từng đợt và của TỔNG CỘNG
-    dot_totals = {}
-    grand_total_val = 0.0
-    grand_total_coc = 0.0
-    coc_tong_col = f"TỔNG{COC_COL_SUFFIX}"
-    
-    for _, r in df_result.iterrows():
-        dot_str = str(r['ĐỢT HỌC THỬ'])
-        if dot_str == 'TỔNG CỘNG':
-            grand_total_val = float(r.get('TỔNG', 0.0))
-            grand_total_coc = float(r.get(coc_tong_col, 0.0))
-        elif dot_str.startswith('TỔNG '):
-            dot_name = dot_str[len('TỔNG '):]
-            dot_totals[dot_name] = {
-                'total': float(r.get('TỔNG', 0.0)),
-                'coc_total': float(r.get(coc_tong_col, 0.0)),
-            }
-
-    target_cols = AGE_GROUPS + REPORT_3_CONSOLIDATED_COLUMNS
+    target_cols = AGE_GROUPS + ['TỔNG'] + REPORT_3_CONSOLIDATED_COLUMNS
     formatted_rows = []
 
     for _, row in df_result.iterrows():
@@ -830,31 +852,22 @@ def prepare_excel_report_3(df_report_3):
             'ĐỢT HỌC THỬ': row.get('ĐỢT HỌC THỬ', ''),
             'Nguồn': row.get('Nguồn', ''),
         }
-        dot_str = str(row.get('ĐỢT HỌC THỬ', ''))
         row_total = float(row.get('TỔNG', 0.0))
-        row_coc_total = float(row.get(coc_tong_col, 0.0))
+        row_coc_total = float(row.get(f"TỔNG{COC_COL_SUFFIX}", 0.0))
 
-        # Format 7 nhóm tuổi + 3 cột gộp
+        # Mỗi nhóm: Data (% Data), Bills (% Bills), tỷ lệ chốt, Bills/Tổng Data.
         for col in target_cols:
             col_coc = f"{col}{COC_COL_SUFFIX}"
-            val = row.get(col, 0.0)
-            coc_val = row.get(col_coc, 0.0)
-            new_row[col] = _format_r3_excel_cell(val, row_total, coc_val, row_coc_total)
-
-        # Format cột TỔNG
-        if dot_str == 'TỔNG CỘNG':
-            t_denom = row_total
-            c_denom = row_coc_total
-        elif dot_str.startswith('TỔNG '):
-            t_denom = grand_total_val
-            c_denom = grand_total_coc
-        else:
-            # Dòng chi tiết: theo đợt tương ứng
-            dot_info = dot_totals.get(dot_str, {'total': 0.0, 'coc_total': 0.0})
-            t_denom = dot_info['total']
-            c_denom = dot_info['coc_total']
-
-        new_row['TỔNG'] = _format_r3_excel_cell(row_total, t_denom, row_coc_total, c_denom)
+            val = float(row.get(col, 0.0))
+            coc_val = float(row.get(col_coc, 0.0))
+            data_pct = (val / row_total * 100) if row_total > 0 else 0.0
+            bills_pct = (coc_val / row_coc_total * 100) if row_coc_total > 0 else 0.0
+            new_row[_r3_data_display_field(col)] = f"{_format_r3_value(val)} ({data_pct:.2f}%)"
+            new_row[_r3_bills_display_field(col)] = f"{_format_r3_value(coc_val)} ({bills_pct:.2f}%)"
+            new_row[_r3_close_rate_field(col)] = (coc_val / val * 100) if val > 0 else 0.0
+            new_row[_r3_bills_over_total_data_field(col)] = (
+                coc_val / row_total * 100 if row_total > 0 else 0.0
+            )
         formatted_rows.append(new_row)
 
     return pd.DataFrame(formatted_rows)[out_cols]
