@@ -1044,11 +1044,11 @@ function(params) {
 """)
 
 
-def configure_report5_grid_columns(gb):
+def configure_report5_grid_columns(gb, include_costs=True):
     """
     Cấu hình các cột cho Báo cáo 5: Truyền Thông (Facebook & Google × Độ Tuổi).
     Gồm 2 cột cố định bên trái (Thời gian xuất data, Nguồn), nhóm Data sai số,
-    nhóm Chi phí, và các nhóm tuổi (6 nhóm tuổi + 1 TỔNG).
+    tùy chọn nhóm Chi phí, và các nhóm tuổi.
     """
     from report_5_schema import (
         REPORT_5_DISPLAY_GROUPS,
@@ -1098,7 +1098,9 @@ def configure_report5_grid_columns(gb):
                 },
             ],
         },
-        'Chi phí': {
+    }
+    if include_costs:
+        col_defs['Chi phí'] = {
             'headerName': 'Chi phí',
             'children': [
                 {
@@ -1120,8 +1122,7 @@ def configure_report5_grid_columns(gb):
                     'valueFormatter': formatter_currency_float,
                 },
             ],
-        },
-    }
+        }
 
     for group in REPORT_5_DISPLAY_GROUPS:
         is_tong = (group == 'TỔNG')
@@ -1151,6 +1152,48 @@ def configure_report5_grid_columns(gb):
             'children': children,
         }
 
+    gb._GridOptionsBuilder__grid_options['columnDefs'] = col_defs
+
+
+# ==========================================
+# CẤU HÌNH CỘT CHO BÁO CÁO 6 (MKT VỊ TRÍ ĐỊA LÝ)
+# ==========================================
+
+def configure_report6_grid_columns(gb):
+    """Cấu hình header hai tầng TC1–TC6 cho Báo cáo 6."""
+    from report_6_schema import (
+        REPORT_6_TC_GROUPS,
+        FIELD_TIME,
+        FIELD_LOCATION,
+        tc_data_field,
+        tc_location_ratio_field,
+        tc_bills_field,
+        tc_close_ratio_field,
+        tc_bill_share_field,
+    )
+
+    gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
+    col_defs = {
+        FIELD_TIME: {
+            'headerName': FIELD_TIME, 'field': FIELD_TIME,
+            'width': 140, 'pinned': 'left',
+        },
+        FIELD_LOCATION: {
+            'headerName': FIELD_LOCATION, 'field': FIELD_LOCATION,
+            'width': 210, 'pinned': 'left',
+        },
+    }
+    for tc in REPORT_6_TC_GROUPS:
+        col_defs[tc] = {
+            'headerName': tc,
+            'children': [
+                {'headerName': 'SL', 'field': tc_data_field(tc), 'width': 90, 'valueFormatter': formatter_r5_number},
+                {'headerName': 'Tỉ lệ vị trí (SL / Tổng data)', 'field': tc_location_ratio_field(tc), 'width': 135, 'valueFormatter': pct_formatter},
+                {'headerName': 'Bills', 'field': tc_bills_field(tc), 'width': 90, 'valueFormatter': formatter_r5_number},
+                {'headerName': 'Tỉ lệ chốt (Bills / SL)', 'field': tc_close_ratio_field(tc), 'width': 120, 'valueFormatter': pct_formatter},
+                {'headerName': '% Bills (Bills / Tổng số Bills)', 'field': tc_bill_share_field(tc), 'width': 145, 'valueFormatter': pct_formatter},
+            ],
+        }
     gb._GridOptionsBuilder__grid_options['columnDefs'] = col_defs
 
 

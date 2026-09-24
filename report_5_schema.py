@@ -4,19 +4,24 @@ Tập trung toàn bộ hằng số, danh sách nhóm tuổi, TC, field nội b�
 Không phụ thuộc Streamlit hoặc pandas.
 """
 
-REPORT_5_SCHEMA_VERSION = 2
+REPORT_5_SCHEMA_VERSION = 5
 
 REPORT_5_CHANNEL_FACEBOOK = "facebook"
 REPORT_5_CHANNEL_GOOGLE = "google"
 REPORT_5_CHANNEL_TOTAL = "tong"
+# Bảng IV là phạm vi Facebook Data Không Gọi (KOG1..KOG6), không phải SV Offline.
+REPORT_5_CHANNEL_DATA_KHONG_GOI = "data_khong_goi"
 
 REPORT_5_TC_ROWS = (
     "TC1", "TC2", "TC3", "TC4", "TC5", "TC6"
 )
 
+REPORT_5_PARENT_GROUP = "Phụ huynh có con C2, C3"
+
 REPORT_5_AGE_GROUPS = (
     "Học sinh cấp 2",
     "Học sinh cấp 3",
+    REPORT_5_PARENT_GROUP,
     "Sinh Viên",
     "Người đi làm dưới 35 Tuổi",
     "Người đi làm từ 35 - 50 Tuổi",
@@ -99,7 +104,7 @@ def get_report_5_fields() -> list[str]:
     return fields
 
 
-def get_report_5_column_specs():
+def get_report_5_column_specs(include_costs: bool = True):
     """
     Trả về cấu trúc 2 tầng (Group Header -> List[(Child Header, field_key, format_type, width)])
     dùng chung cho cấu hình AgGrid và xuất Excel.
@@ -113,12 +118,13 @@ def get_report_5_column_specs():
             ("SL data sai số", FIELD_ERROR_COUNT, "float", 120),
             ("Phần trăm data sai số trên Tổng data", FIELD_ERROR_PERCENT, "pct", 165),
         ]),
-        ("Chi phí", [
+    ]
+    if include_costs:
+        specs.append(("Chi phí", [
             ("Tổng chi phí", FIELD_COST_TOTAL, "currency_int", 130),
             ("Chi phí/Data hợp lệ", FIELD_COST_PER_VALID_DATA, "currency_float", 150),
             ("Chi phí/Bill", FIELD_COST_PER_BILL, "currency_float", 130),
-        ]),
-    ]
+        ]))
     for g in REPORT_5_DISPLAY_GROUPS:
         specs.append((
             g,

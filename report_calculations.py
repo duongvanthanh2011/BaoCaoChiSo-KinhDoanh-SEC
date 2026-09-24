@@ -6,6 +6,9 @@ Chứa:
 - Tính toán tỷ lệ phần trăm và cấu trúc dòng Tổng cộng cho xuất Excel
 """
 
+import re
+import unicodedata
+
 import streamlit as st
 import pandas as pd
 from report_utils import (
@@ -28,14 +31,18 @@ from data_processing import (
     expand_report_3_sources_with_weights,
     expand_report_4_sources_with_weights,
     expand_report_5_sources_with_weights,
+    expand_report_6_tc_weights,
+    normalize_report_6_location,
 )
 from report_5_schema import (
     REPORT_5_SCHEMA_VERSION,
     REPORT_5_CHANNEL_FACEBOOK,
     REPORT_5_CHANNEL_GOOGLE,
     REPORT_5_CHANNEL_TOTAL,
+    REPORT_5_CHANNEL_DATA_KHONG_GOI,
     REPORT_5_TC_ROWS,
     REPORT_5_AGE_GROUPS,
+    REPORT_5_PARENT_GROUP,
     REPORT_5_DISPLAY_GROUPS,
     FIELD_TIME,
     FIELD_SOURCE,
@@ -50,6 +57,21 @@ from report_5_schema import (
     close_ratio_field,
     bill_share_field,
     get_report_5_fields,
+)
+from report_6_schema import (
+    REPORT_6_SCHEMA_VERSION,
+    REPORT_6_CHANNEL_FACEBOOK,
+    REPORT_6_CHANNEL_GOOGLE,
+    REPORT_6_CHANNEL_TOTAL,
+    REPORT_6_TC_GROUPS,
+    FIELD_TIME as REPORT_6_FIELD_TIME,
+    FIELD_LOCATION as REPORT_6_FIELD_LOCATION,
+    tc_data_field,
+    tc_location_ratio_field,
+    tc_bills_field,
+    tc_close_ratio_field,
+    tc_bill_share_field,
+    get_report_6_fields,
 )
 from time_utils import format_fetch_time
 
@@ -97,7 +119,10 @@ def get_report_3_column_specs():
 def get_cached_base_reports(raw_df, selected_sessions, revision):
     """Một bộ kết quả nền trong từng phiên; input không làm tính lại dữ liệu CRM."""
     sessions = tuple(sorted(set(str(s) for s in selected_sessions)))
-    key = (revision, id(raw_df), sessions, st.session_state.get('fetch_time'), REPORT_5_SCHEMA_VERSION)
+    key = (
+        revision, id(raw_df), sessions, st.session_state.get('fetch_time'),
+        REPORT_5_SCHEMA_VERSION, REPORT_6_SCHEMA_VERSION,
+    )
     cached = st.session_state.get('_base_reports_cache')
     if cached is None or cached['key'] != key:
         filtered = raw_df[raw_df['ĐỢT HỌC THỬ'].isin(sessions)].copy() if sessions else raw_df.copy()
@@ -108,6 +133,7 @@ def get_cached_base_reports(raw_df, selected_sessions, revision):
             compute_report_3(filtered),
             compute_report_4(filtered),
             compute_report_5(filtered),
+            compute_report_6(filtered),
         )
         cached = {'key': key, 'results': results}
         st.session_state['_base_reports_cache'] = cached
@@ -1132,6 +1158,57 @@ def finalize_report_5_metrics(frame):
     return df[get_report_5_fields()]
 
 
+def _normalize_report_5_age_label(value):
+    """Chuẩn hóa nhãn tuổi cục bộ cho BC5, không làm thay đổi schema dùng chung."""
+    if not isinstance(value, str):
+        return ""
+    normalized = unicodedata.normalize("NFD", value.upper()).replace("Đ", "D")
+    normalized = "".join(
+        char for char in normalized if unicodedata.category(char) != "Mn"
+    )
+    return re.sub(r"[^A-Z0-9]+", " ", normalized).strip()
+
+
+_REPORT_5_PARENT_GROUP_NORMALIZED = _normalize_report_5_age_label(REPORT_5_PARENT_GROUP)
+
+
+def _is_report_5_parent_group(value):
+    """Nhận diện các cách ghi tương đương của phụ huynh có con C2 và C3."""
+    normalized = _normalize_report_5_age_label(value)
+    if normalized == _REPORT_5_PARENT_GROUP_NORMALIZED:
+        return True
+
+    prefix = "PHU HUYNH CO CON"
+    if not normalized.startswith(prefix + " "):
+        return False
+    suffix_tokens = normalized[len(prefix):].strip().split()
+    allowed_tokens = {"C2", "C3", "CAP", "2", "3", "VA"}
+    if not suffix_tokens or not set(suffix_tokens).issubset(allowed_tokens):
+        return False
+
+    has_c2 = "C2" in suffix_tokens or ("CAP" in suffix_tokens and "2" in suffix_tokens)
+    has_c3 = "C3" in suffix_tokens or ("CAP" in suffix_tokens and "3" in suffix_tokens)
+    return has_c2 and has_c3
+
+
+def classify_report_5_age_group(description, fallback_age_group=None):
+    """
+    Phân loại tuổi chỉ cho BC5.
+
+    Nhóm phụ huynh được nhận diện từ description (hoặc Nhóm tuổi fallback), còn
+    toàn bộ quy tắc tuổi chung vẫn dùng classify_age_group để BC3 không đổi schema.
+    """
+    candidate = description if isinstance(description, str) and description.strip() else fallback_age_group
+    if _is_report_5_parent_group(candidate):
+        return REPORT_5_PARENT_GROUP
+
+    common_group = classify_age_group(candidate)
+    if common_group in REPORT_5_AGE_GROUPS:
+        return common_group
+    # BC5 tiếp tục gộp giá trị thiếu/không khớp vào Khác.
+    return "Khác"
+
+
 def build_report_5_tables(df_filtered, fetch_time):
     """
     Xây dựng 3 bảng Facebook / Google / Tổng cho Báo cáo 5.
@@ -1155,6 +1232,7 @@ def build_report_5_tables(df_filtered, fetch_time):
             REPORT_5_CHANNEL_FACEBOOK: empty_df,
             REPORT_5_CHANNEL_GOOGLE: empty_df.copy(),
             REPORT_5_CHANNEL_TOTAL: empty_df.copy(),
+            REPORT_5_CHANNEL_DATA_KHONG_GOI: empty_df.copy(),
         }
 
     df_calc = df_filtered.copy()
@@ -1169,29 +1247,21 @@ def build_report_5_tables(df_filtered, fetch_time):
         rel = df_calc.get("Mối quan hệ", pd.Series(index=df_calc.index, dtype=object)).fillna("")
         df_calc["SAI SỐ - SAI ĐỐI TƯỢNG"] = rel.isin(SAI_SO_SAI_DOI_TUONG_LABELS).astype(int)
 
-    # Chuẩn hóa nhóm tuổi cục bộ cho BC5: Độ tuổi khác / Chưa điền -> Khác
-    if "description" in df_calc.columns:
-        raw_age = df_calc["description"].apply(classify_age_group)
-    else:
-        raw_age = df_calc.get("Nhóm tuổi", pd.Series("Chưa điền", index=df_calc.index))
+    # Phân loại tuổi cục bộ BC5: nhận diện thêm phụ huynh nhưng không đổi AGE_GROUPS chung.
+    raw_description = df_calc.get("description", pd.Series(index=df_calc.index, dtype=object))
+    fallback_age = df_calc.get("Nhóm tuổi", pd.Series(index=df_calc.index, dtype=object))
+    r5_age_series = pd.Series(
+        [
+            classify_report_5_age_group(raw_description.loc[idx], fallback_age.loc[idx])
+            for idx in df_calc.index
+        ],
+        index=df_calc.index,
+    )
 
-    def _map_r5_age(val):
-        if not isinstance(val, str) or not val.strip():
-            return "Khác"
-        if val in {"Độ tuổi khác", "Chưa điền"}:
-            return "Khác"
-        if val in REPORT_5_AGE_GROUPS:
-            return val
-        return "Khác"
-
-    r5_age_series = raw_age.apply(_map_r5_age)
-
-    # Nguồn Báo cáo 5
-    if "_report_5_sources_with_weights" not in df_calc.columns:
-        source_details = df_calc.get("account_source_details", pd.Series(index=df_calc.index, dtype=object))
-        r5_sources = source_details.apply(expand_report_5_sources_with_weights)
-    else:
-        r5_sources = df_calc["_report_5_sources_with_weights"]
+    # Luôn phân loại lại từ danh sách nguồn gốc. Điều này tránh dùng kết quả tạm
+    # của phiên tải dữ liệu cũ khi quy tắc lọc nguồn BC5 vừa được cập nhật.
+    source_details = df_calc.get("account_source_details", pd.Series(index=df_calc.index, dtype=object))
+    r5_sources = source_details.apply(expand_report_5_sources_with_weights)
 
     # Thu thập record
     records = []
@@ -1216,9 +1286,12 @@ def build_report_5_tables(df_filtered, fetch_time):
 
     rec_df = pd.DataFrame(records)
 
-    # Tạo bảng base cho Facebook và Google
+    # Tạo bảng base cho Facebook, Google và Facebook Data Không Gọi.
+    # Facebook đã bao gồm Facebook thường, CV OFF và Sinh viên Offline;
+    # Data Không Gọi là bảng IV riêng nên không được cộng vào Facebook/Tổng.
     fb_rows = []
     gg_rows = []
+    data_khong_goi_rows = []
 
     for tc in REPORT_5_TC_ROWS:
         # Facebook
@@ -1273,6 +1346,35 @@ def build_report_5_tables(df_filtered, fetch_time):
             r_gg[age_bill_field(g)] = round(float(b_val), 2)
         gg_rows.append(r_gg)
 
+        # Facebook Data Không Gọi / KOG (không có chi phí phân bổ riêng)
+        if not rec_df.empty:
+            sub_data_khong_goi = rec_df[
+                (rec_df["Kênh"] == REPORT_5_CHANNEL_DATA_KHONG_GOI)
+                & (rec_df["Nguồn"] == tc)
+            ]
+            err_data_khong_goi = sub_data_khong_goi["ErrorWeight"].sum()
+        else:
+            sub_data_khong_goi = pd.DataFrame()
+            err_data_khong_goi = 0.0
+
+        r_data_khong_goi = {
+            FIELD_TIME: fetch_time,
+            FIELD_SOURCE: tc,
+            FIELD_ERROR_COUNT: round(float(err_data_khong_goi), 2),
+            FIELD_COST_TOTAL: 0,
+        }
+        for g in REPORT_5_AGE_GROUPS:
+            if not sub_data_khong_goi.empty:
+                g_match = sub_data_khong_goi[sub_data_khong_goi["Nhóm tuổi"] == g]
+                d_val = g_match["DataWeight"].sum()
+                b_val = g_match["BillWeight"].sum()
+            else:
+                d_val = 0.0
+                b_val = 0.0
+            r_data_khong_goi[age_data_field(g)] = round(float(d_val), 2)
+            r_data_khong_goi[age_bill_field(g)] = round(float(b_val), 2)
+        data_khong_goi_rows.append(r_data_khong_goi)
+
     # Bảng Tổng: Total(TCn) = Facebook(TCn) + Google(TCn) (cộng các trường additive)
     tong_rows = []
     for r_fb, r_gg in zip(fb_rows, gg_rows):
@@ -1290,11 +1392,13 @@ def build_report_5_tables(df_filtered, fetch_time):
     final_fb = finalize_report_5_metrics(pd.DataFrame(fb_rows))
     final_gg = finalize_report_5_metrics(pd.DataFrame(gg_rows))
     final_tong = finalize_report_5_metrics(pd.DataFrame(tong_rows))
+    final_data_khong_goi = finalize_report_5_metrics(pd.DataFrame(data_khong_goi_rows))
 
     return {
         REPORT_5_CHANNEL_FACEBOOK: final_fb,
         REPORT_5_CHANNEL_GOOGLE: final_gg,
         REPORT_5_CHANNEL_TOTAL: final_tong,
+        REPORT_5_CHANNEL_DATA_KHONG_GOI: final_data_khong_goi,
     }
 
 
@@ -1312,6 +1416,7 @@ def apply_report_5_costs(report_tables, cost_totals):
     Ghép chi phí nhập tay vào Báo cáo 5 sau cache CRM:
     - cost_totals: dict mapping (channel, tc) -> int (vd: {("facebook", "TC1"): 1000000})
     Tính toán lại hai chỉ số chi phí cho Facebook, Google và bảng Tổng.
+    Bảng Facebook Data Không Gọi được giữ riêng, không nhận chi phí vì không có input phân bổ.
     """
     if not report_tables:
         return report_tables
@@ -1351,11 +1456,18 @@ def apply_report_5_costs(report_tables, cost_totals):
         tong_rows.append(r_tong)
 
     final_tong = finalize_report_5_metrics(pd.DataFrame(tong_rows))
+    data_khong_goi_df = report_tables.get(REPORT_5_CHANNEL_DATA_KHONG_GOI)
+    final_data_khong_goi = (
+        finalize_report_5_metrics(data_khong_goi_df.copy())
+        if data_khong_goi_df is not None and not data_khong_goi_df.empty
+        else data_khong_goi_df
+    )
 
     return {
         REPORT_5_CHANNEL_FACEBOOK: final_fb,
         REPORT_5_CHANNEL_GOOGLE: final_gg,
         REPORT_5_CHANNEL_TOTAL: final_tong,
+        REPORT_5_CHANNEL_DATA_KHONG_GOI: final_data_khong_goi,
     }
 
 
@@ -1400,3 +1512,133 @@ def prepare_excel_report_5(df_table):
     df_excel = df_table.copy()
     time_val = df_excel[FIELD_TIME].iloc[0] if len(df_excel) > 0 else ''
     return pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
+
+
+# ==========================================
+# BÁO CÁO 6: MKT THEO VỊ TRÍ ĐỊA LÝ (TC × ĐỊA CHỈ)
+# ==========================================
+
+def finalize_report_6_metrics(frame):
+    """Tính tỷ lệ BC6 từ các trường cộng được, theo mẫu số riêng của từng TC."""
+    df = frame.copy()
+    if df.empty:
+        return pd.DataFrame(columns=get_report_6_fields())
+
+    for tc in REPORT_6_TC_GROUPS:
+        data_field = tc_data_field(tc)
+        bills_field = tc_bills_field(tc)
+        zero_series = pd.Series(0.0, index=df.index)
+        df[data_field] = pd.to_numeric(df.get(data_field, zero_series), errors="coerce").fillna(0.0)
+        df[bills_field] = pd.to_numeric(df.get(bills_field, zero_series), errors="coerce").fillna(0.0)
+        total_data = float(df[data_field].sum())
+        total_bills = float(df[bills_field].sum())
+        df[tc_location_ratio_field(tc)] = (
+            (df[data_field] / total_data * 100).round(2) if total_data > 0 else 0.0
+        )
+        df[tc_close_ratio_field(tc)] = (
+            df[bills_field] / df[data_field].where(df[data_field] > 0) * 100
+        ).fillna(0.0).round(2)
+        df[tc_bill_share_field(tc)] = (
+            (df[bills_field] / total_bills * 100).round(2) if total_bills > 0 else 0.0
+        )
+
+    if REPORT_6_FIELD_TIME not in df.columns:
+        df[REPORT_6_FIELD_TIME] = ""
+    if REPORT_6_FIELD_LOCATION not in df.columns:
+        df[REPORT_6_FIELD_LOCATION] = "-"
+    df[REPORT_6_FIELD_LOCATION] = df[REPORT_6_FIELD_LOCATION].fillna("-")
+    return df[get_report_6_fields()]
+
+
+def _build_report_6_table(records, channel, fetch_time):
+    """Dựng một bảng Facebook, Google hoặc Tổng từ bản ghi nguồn đã được gán trọng số."""
+    if records.empty:
+        return pd.DataFrame(columns=get_report_6_fields())
+    if channel == REPORT_6_CHANNEL_TOTAL:
+        subset = records[records["Kênh"].isin([REPORT_6_CHANNEL_FACEBOOK, REPORT_6_CHANNEL_GOOGLE])]
+    else:
+        subset = records[records["Kênh"] == channel]
+    if subset.empty:
+        return pd.DataFrame(columns=get_report_6_fields())
+
+    grouped = subset.groupby(["Tỉnh/Thành phố", "TC"], dropna=False)[["DataWeight", "BillWeight"]].sum()
+    locations = grouped.groupby(level=0)["DataWeight"].sum().sort_values(ascending=False).index.tolist()
+    rows = []
+    for location in locations:
+        row = {REPORT_6_FIELD_TIME: fetch_time, REPORT_6_FIELD_LOCATION: location}
+        for tc in REPORT_6_TC_GROUPS:
+            try:
+                values = grouped.loc[(location, tc)]
+                data_value, bills_value = float(values["DataWeight"]), float(values["BillWeight"])
+            except KeyError:
+                data_value = bills_value = 0.0
+            row[tc_data_field(tc)] = round(data_value, 2)
+            row[tc_bills_field(tc)] = round(bills_value, 2)
+        rows.append(row)
+    rows.sort(key=lambda row: row[REPORT_6_FIELD_LOCATION] == "-")
+    return finalize_report_6_metrics(pd.DataFrame(rows))
+
+
+def build_report_6_tables(df_filtered, fetch_time):
+    """Xây dựng ba bảng BC6: Facebook, Google và Tổng Facebook + Google."""
+    if df_filtered.empty:
+        empty_df = pd.DataFrame(columns=get_report_6_fields())
+        return {
+            REPORT_6_CHANNEL_FACEBOOK: empty_df,
+            REPORT_6_CHANNEL_GOOGLE: empty_df.copy(),
+            REPORT_6_CHANNEL_TOTAL: empty_df.copy(),
+        }
+
+    df_calc = df_filtered.copy()
+    if "Data_coc_chot" not in df_calc.columns:
+        relation = df_calc.get("Mối quan hệ", pd.Series(index=df_calc.index, dtype=object)).fillna("")
+        df_calc["Data_coc_chot"] = relation.isin(COC_CHOT_LABELS).astype(int)
+
+    # Tương tự BC5, không sử dụng trọng số tạm từ phiên cũ để thay đổi quy tắc
+    # lọc nguồn có hiệu lực ngay khi ứng dụng được tải lại.
+    source_details = df_calc.get("account_source_details", pd.Series(index=df_calc.index, dtype=object))
+    source_weights = source_details.apply(expand_report_6_tc_weights)
+    locations = df_calc.get("_report_6_location")
+    if locations is None:
+        locations = df_calc.get("billing_address_street", pd.Series(index=df_calc.index, dtype=object)).apply(normalize_report_6_location)
+
+    records = []
+    for idx, row in df_calc.iterrows():
+        is_bill = int(row.get("Data_coc_chot", 0))
+        weights = source_weights.loc[idx]
+        for item in weights if isinstance(weights, list) else []:
+            if len(item) != 3:
+                continue
+            channel, tc, weight = item
+            weight = float(weight)
+            records.append({
+                "Kênh": channel,
+                "TC": tc,
+                "Tỉnh/Thành phố": locations.loc[idx],
+                "DataWeight": weight,
+                "BillWeight": weight * is_bill,
+            })
+    records_df = pd.DataFrame(records)
+    return {
+        REPORT_6_CHANNEL_FACEBOOK: _build_report_6_table(records_df, REPORT_6_CHANNEL_FACEBOOK, fetch_time),
+        REPORT_6_CHANNEL_GOOGLE: _build_report_6_table(records_df, REPORT_6_CHANNEL_GOOGLE, fetch_time),
+        REPORT_6_CHANNEL_TOTAL: _build_report_6_table(records_df, REPORT_6_CHANNEL_TOTAL, fetch_time),
+    }
+
+
+def compute_report_6(df_filtered):
+    """Tính BC6 từ DataFrame đã lọc theo đợt học thử."""
+    try:
+        fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
+    except Exception:
+        fetch_time = format_fetch_time()
+    return build_report_6_tables(df_filtered, fetch_time)
+
+
+def aggregate_report_6_rows(df_rows, time_val, location_label="📊 TỔNG CỘNG"):
+    """Tổng hợp dòng tổng BC6 rồi tính lại tỷ lệ theo tử số/mẫu số đã cộng."""
+    row = {REPORT_6_FIELD_TIME: time_val, REPORT_6_FIELD_LOCATION: location_label}
+    for tc in REPORT_6_TC_GROUPS:
+        row[tc_data_field(tc)] = round(float(df_rows.get(tc_data_field(tc), pd.Series(dtype=float)).sum()), 2)
+        row[tc_bills_field(tc)] = round(float(df_rows.get(tc_bills_field(tc), pd.Series(dtype=float)).sum()), 2)
+    return finalize_report_6_metrics(pd.DataFrame([row])).iloc[0].to_dict()

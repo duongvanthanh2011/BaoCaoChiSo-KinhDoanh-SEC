@@ -24,7 +24,7 @@ ACCOUNT_FIELDS = (
     "id,created_at,detail_custom_fields,account_code,account_name,"
     "account_manager,relation_id,mgr_display_name,relation_name,"
     "account_source,account_source_details,detail_custom_fields_display_value,account_type,"
-    "description"
+    "description,billing_address_street"
 )
 
 # TCP connection pool — reuse keep-alive across paginated requests

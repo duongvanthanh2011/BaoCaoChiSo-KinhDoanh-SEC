@@ -768,14 +768,19 @@ def build_report_5_excel_bytes(sheets, file_name):
     - Bật AutoFilter.
     - Dòng TỔNG CỘNG in đậm.
     """
+    # Mỗi item có thể là (tên_sheet, dataframe) hoặc (tên_sheet, dataframe, include_costs).
+    sheet_items = [
+        (item[0], item[1], item[2] if len(item) >= 3 else True)
+        for item in sheets
+    ]
     cache = st.session_state.setdefault('_excel_download_cache', {})
     key = file_name
     cached = cache.get(key)
     if cached is not None:
         cached_sheets = cached.get('sheets', [])
-        if len(cached_sheets) == len(sheets) and all(
-            name == c_name and df.equals(c_df)
-            for (name, df), (c_name, c_df) in zip(sheets, cached_sheets)
+        if len(cached_sheets) == len(sheet_items) and all(len(item) == 3 for item in cached_sheets) and all(
+            name == c_name and include_costs == c_include_costs and df.equals(c_df)
+            for (name, df, include_costs), (c_name, c_df, c_include_costs) in zip(sheet_items, cached_sheets)
         ):
             return cached['data']
 
@@ -799,13 +804,12 @@ def build_report_5_excel_bytes(sheets, file_name):
         bottom=Side(style='thin', color='D3D3D3')
     )
 
-    specs = get_report_5_column_specs()
-    flat_cols = []
-    for grp_name, children in specs:
-        for child_name, field_key, fmt_type, width in children:
-            flat_cols.append((child_name, field_key, fmt_type, width, grp_name))
-
-    for sheet_name, df_table in sheets:
+    for sheet_name, df_table, include_costs in sheet_items:
+        specs = get_report_5_column_specs(include_costs=include_costs)
+        flat_cols = []
+        for grp_name, children in specs:
+            for child_name, field_key, fmt_type, width in children:
+                flat_cols.append((child_name, field_key, fmt_type, width, grp_name))
         ws = wb.create_sheet(title=sheet_name)
         ws.views.sheetView[0].showGridLines = True
 
@@ -875,7 +879,7 @@ def build_report_5_excel_bytes(sheets, file_name):
     wb.save(buffer)
     data = buffer.getvalue()
     cache[key] = {
-        'sheets': [(name, df.copy()) for name, df in sheets],
+        'sheets': [(name, df.copy(), include_costs) for name, df, include_costs in sheet_items],
         'data': data,
     }
     return data
@@ -889,6 +893,104 @@ def render_report_5_excel_download(sheets, file_name, button_label):
         file_name=file_name,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key="btn_download_excel_report_5",
+    )
+
+
+def build_report_6_excel_bytes(sheets, file_name):
+    """Tạo workbook BC6 gồm nhiều sheet, mỗi sheet có header TC hai tầng."""
+    cache = st.session_state.setdefault('_excel_download_cache', {})
+    cached = cache.get(file_name)
+    if cached is not None:
+        cached_sheets = cached.get('sheets', [])
+        if len(cached_sheets) == len(sheets) and all(
+            name == cached_name and df.equals(cached_df)
+            for (name, df), (cached_name, cached_df) in zip(sheets, cached_sheets)
+        ):
+            return cached['data']
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from report_6_schema import get_report_6_column_specs, FIELD_TIME
+    from report_calculations import aggregate_report_6_rows
+
+    specs = get_report_6_column_specs()
+    flat_columns = [
+        (child_name, field, fmt_type, width)
+        for _, children in specs for child_name, field, fmt_type, width in children
+    ]
+    header_fill = PatternFill(start_color='E8F0FE', end_color='E8F0FE', fill_type='solid')
+    group_fill = PatternFill(start_color='D2E3FC', end_color='D2E3FC', fill_type='solid')
+    bold_font = Font(name='Calibri', size=11, bold=True)
+    normal_font = Font(name='Calibri', size=11)
+    border = Border(
+        left=Side(style='thin', color='D3D3D3'), right=Side(style='thin', color='D3D3D3'),
+        top=Side(style='thin', color='D3D3D3'), bottom=Side(style='thin', color='D3D3D3'),
+    )
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    for sheet_name, df_table in sheets:
+        ws = wb.create_sheet(title=sheet_name)
+        col_index = 1
+        for group_name, children in specs:
+            start = col_index
+            end = start + len(children) - 1
+            if group_name is None:
+                for child_name, _, _, _ in children:
+                    cell = ws.cell(1, col_index, child_name)
+                    cell.font, cell.fill, cell.border = bold_font, header_fill, border
+                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                    ws.cell(2, col_index).border = border
+                    ws.merge_cells(start_row=1, start_column=col_index, end_row=2, end_column=col_index)
+                    col_index += 1
+            else:
+                for current in range(start, end + 1):
+                    ws.cell(1, current).fill = group_fill
+                    ws.cell(1, current).border = border
+                group_cell = ws.cell(1, start, group_name)
+                group_cell.font = bold_font
+                group_cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                ws.merge_cells(start_row=1, start_column=start, end_row=1, end_column=end)
+                for child_name, _, _, _ in children:
+                    cell = ws.cell(2, col_index, child_name)
+                    cell.font, cell.fill, cell.border = bold_font, header_fill, border
+                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                    col_index += 1
+
+        output = df_table.copy()
+        if not output.empty:
+            time_val = output[FIELD_TIME].iloc[0] if FIELD_TIME in output else ''
+            output = pd.concat(
+                [output, pd.DataFrame([aggregate_report_6_rows(output, time_val)])],
+                ignore_index=True,
+            )
+        for row_index, (_, row_data) in enumerate(output.iterrows(), start=3):
+            is_total = str(row_data.get('Tỉnh/Thành phố', '')).startswith('📊 TỔNG')
+            for column_index, (_, field, fmt_type, _) in enumerate(flat_columns, start=1):
+                _format_excel_cell(
+                    ws.cell(row_index, column_index), row_data.get(field), fmt_type,
+                    is_total, normal_font, bold_font, border,
+                )
+        for column_index, (_, _, _, width) in enumerate(flat_columns, start=1):
+            ws.column_dimensions[get_column_letter(column_index)].width = max(12, int(width / 7.5))
+        ws.freeze_panes = 'C3'
+        ws.auto_filter.ref = f"A2:{get_column_letter(len(flat_columns))}{max(2, len(output) + 2)}"
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    data = buffer.getvalue()
+    cache[file_name] = {'sheets': [(name, df.copy()) for name, df in sheets], 'data': data}
+    return data
+
+
+def render_report_6_excel_download(sheets, file_name, button_label):
+    st.download_button(
+        label=button_label,
+        data=build_report_6_excel_bytes(sheets, file_name),
+        file_name=file_name,
+        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        key='btn_download_excel_report_6',
     )
 
 

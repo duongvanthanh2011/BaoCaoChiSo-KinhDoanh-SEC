@@ -422,11 +422,6 @@ def classify_report_5_source(label):
     if _RE_R5_EXCLUDE_WORDS.search(norm):
         return None
 
-    # Facebook Data Không Gọi: ^DATA KHONG GOI.*KOG([1-6])$ -> TC1..TC6
-    m = _RE_R5_FB_KOG.search(norm)
-    if m:
-        return ("facebook", f"TC{m.group(1)}")
-
     if not _RE_R5_ADS_START.search(norm):
         return None
 
@@ -445,13 +440,31 @@ def classify_report_5_source(label):
     if m:
         return ("facebook", f"TC{m.group(1)}")
 
-    # Facebook Sinh viên offline kết thúc SV1
-    if _RE_R5_SV1_END.search(norm):
-        m = _RE_R5_SV_OFFLINE.search(norm)
-        if m:
-            return ("facebook", f"TC{m.group(1)}")
-
     return None
+
+
+def classify_report_5_sv_offline_source(label):
+    """Nhận diện nguồn Facebook Sinh viên Offline để cộng vào bảng Facebook chính."""
+    if not isinstance(label, str) or not label.strip():
+        return None
+    norm = _normalize_source_label(label)
+    if _RE_R5_EXCLUDE_WORDS.search(norm) or not _RE_R5_ADS_START.search(norm):
+        return None
+    if not _RE_R5_SV1_END.search(norm):
+        return None
+    matched = _RE_R5_SV_OFFLINE.search(norm)
+    return f"TC{matched.group(1)}" if matched else None
+
+
+def classify_report_5_data_khong_goi_source(label):
+    """Nhận diện riêng Facebook Data Không Gọi KOG1..KOG6 cho bảng IV."""
+    if not isinstance(label, str) or not label.strip():
+        return None
+    norm = _normalize_source_label(label)
+    if _RE_R5_EXCLUDE_WORDS.search(norm):
+        return None
+    matched = _RE_R5_FB_KOG.search(norm)
+    return f"TC{matched.group(1)}" if matched else None
 
 
 def expand_report_5_sources_with_weights(account_source_details):
@@ -465,6 +478,39 @@ def expand_report_5_sources_with_weights(account_source_details):
     if total_sources == 0:
         return []
     weight = 1.0 / total_sources
+    result = []
+    for item in account_source_details:
+        label = item.get("label", "") if isinstance(item, dict) else (item if isinstance(item, str) else "")
+        data_khong_goi_tc = classify_report_5_data_khong_goi_source(label)
+        if data_khong_goi_tc:
+            result.append(("data_khong_goi", data_khong_goi_tc, weight))
+            continue
+        sv_offline_tc = classify_report_5_sv_offline_source(label)
+        if sv_offline_tc:
+            result.append(("facebook", sv_offline_tc, weight))
+            continue
+        matched = classify_report_5_source(label)
+        if matched:
+            channel, tc = matched
+            result.append((channel, tc, weight))
+    return result
+
+
+def normalize_report_6_location(value):
+    """Chuẩn hóa nhẹ địa chỉ cho BC6, không tự suy diễn hoặc gộp tỉnh/thành."""
+    if not isinstance(value, str) or not value.strip():
+        return "-"
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def expand_report_6_tc_weights(account_source_details):
+    """
+    Phân bổ nguồn MKT của BC6 theo (Facebook|Google, TC1..TC6, 1/N).
+    Không bao gồm Sinh viên Offline vì BC6 chỉ có ba bảng Facebook, Google và Tổng.
+    """
+    if not isinstance(account_source_details, list) or not account_source_details:
+        return []
+    weight = 1.0 / len(account_source_details)
     result = []
     for item in account_source_details:
         label = item.get("label", "") if isinstance(item, dict) else (item if isinstance(item, str) else "")
@@ -602,6 +648,12 @@ def transform_dataframe(df, src_ids, type_ids, account_types_list, users_list=No
     )
     df["_report_5_sources_with_weights"] = source_details.apply(
         expand_report_5_sources_with_weights
+    )
+    df["_report_6_location"] = df.get(
+        "billing_address_street", pd.Series(index=df.index, dtype=object)
+    ).apply(normalize_report_6_location)
+    df["_report_6_tc_weights"] = source_details.apply(
+        expand_report_6_tc_weights
     )
 
     return df

@@ -22,6 +22,7 @@ from report_utils import (
     configure_report3_grid_columns,
     configure_report4_grid_columns,
     configure_report5_grid_columns,
+    configure_report6_grid_columns,
     render_report_color_legend,
 )
 from report_components import (
@@ -35,6 +36,7 @@ from report_components import (
     render_excel_download_multi_sheets,
     render_report_3_excel_download,
     render_report_5_excel_download,
+    render_report_6_excel_download,
     assign_dot_manual_to_first_row,
     render_report_actions_bar,
 )
@@ -45,6 +47,7 @@ from report_calculations import (
     compute_report_3,
     compute_report_4,
     compute_report_5,
+    compute_report_6,
     prepare_excel_report_1,
     prepare_excel_report_2,
     prepare_excel_report_3,
@@ -54,6 +57,7 @@ from report_calculations import (
     aggregate_report_3_rows,
     aggregate_report_4_rows,
     aggregate_report_5_rows,
+    aggregate_report_6_rows,
     apply_report_5_costs,
     calculate_report_2_average_metrics,
     REPORT_2_ADVISOR_COLUMN,
@@ -63,8 +67,15 @@ from report_5_schema import (
     REPORT_5_CHANNEL_FACEBOOK,
     REPORT_5_CHANNEL_GOOGLE,
     REPORT_5_CHANNEL_TOTAL,
+    REPORT_5_CHANNEL_DATA_KHONG_GOI,
     REPORT_5_TC_ROWS,
     FIELD_TIME,
+)
+from report_6_schema import (
+    REPORT_6_CHANNEL_FACEBOOK,
+    REPORT_6_CHANNEL_GOOGLE,
+    REPORT_6_CHANNEL_TOTAL,
+    FIELD_TIME as REPORT_6_FIELD_TIME,
 )
 from manual_input_schema import (
     REPORT_1_CODE,
@@ -497,7 +508,7 @@ def render_report_4(results_4):
 def render_report_5(results_5, selected_sessions=None, repository=None):
     """
     Hiển thị Báo cáo 5: Truyền Thông (Facebook & Google × Độ Tuổi).
-    Gồm 3 bảng: Facebook, Google, và Tổng Facebook + Google.
+    Gồm Facebook, Google, Tổng Facebook + Google và bảng Facebook Data Không Gọi tách riêng.
     Tích hợp form nhập Tổng chi phí theo đợt × kênh × TC lưu vào Supabase.
     """
     if not isinstance(results_5, dict):
@@ -535,12 +546,12 @@ def render_report_5(results_5, selected_sessions=None, repository=None):
         st.markdown(
             "<div style='font-size: 13px; color: #64748B; margin-bottom: 8px;'>"
             "Nhập chi phí thực tế cho từng kênh và TC theo từng đợt học thử (đơn vị: VNĐ). "
-            "Bảng Tổng Facebook + Google sẽ tự động cộng dồn chi phí tương ứng."
+            "Chi phí Facebook áp dụng cho toàn bộ bảng Facebook (gồm Facebook thường, CV OFF và Sinh viên Offline); bảng Tổng Facebook + Google sẽ tự động cộng dồn chi phí tương ứng."
             "</div>",
             unsafe_allow_html=True
         )
         fb_manual_df, fb_hash = render_dot_metric_matrix_inputs(
-            title="1. Chi phí Facebook theo TC (VNĐ)",
+            title="1. Chi phí Facebook (gồm Sinh viên Offline) theo TC (VNĐ)",
             state_key="report_5_fb_cost_manual",
             unique_dots=unique_dots,
             column_labels=REPORT_5_TC_ROWS,
@@ -583,8 +594,9 @@ def render_report_5(results_5, selected_sessions=None, repository=None):
             line-height: 1.6;
         ">
             <b>📊 Báo cáo Truyền Thông: Facebook & Google theo Nhóm tuổi</b><br>
-            &bull; Hiển thị theo 3 bảng: <b>Facebook</b>, <b>Google</b>, và <b>Tổng Facebook + Google</b> (tự động cộng dồn).<br>
-            &bull; Mỗi bảng theo dõi đầy đủ <b>Data sai số</b>, <b>Chi phí</b>, và <b>6 nhóm tuổi</b> cùng cột <b>TỔNG</b>.<br>
+            &bull; Bảng <b>Facebook</b> gồm nguồn Facebook thường, Facebook CV OFF và Facebook Sinh viên Offline; bảng <b>Tổng Facebook + Google</b> cũng bao gồm phần Sinh viên Offline này.<br>
+            &bull; <b>Facebook – Data Không Gọi</b> chỉ tổng hợp nguồn có hậu tố <b>KOG1–KOG6</b>, tách khỏi ba bảng Facebook, Google và Tổng Facebook + Google; vẫn giữ trọng số nguồn 1/N.<br>
+            &bull; Bảng Data Không Gọi chỉ có số liệu CRM (Data, Bills, sai số, độ tuổi), <b>không phân bổ chi phí</b> do chi phí hiện chỉ được nhập chung theo Facebook/Google × TC.<br>
             &bull; Bảng hỗ trợ cuộn ngang để theo dõi toàn bộ các chỉ số chi tiết.
         </div>
         """,
@@ -592,17 +604,18 @@ def render_report_5(results_5, selected_sessions=None, repository=None):
     )
 
     tables_config = [
-        ("#### I. Báo cáo Facebook", enriched_tables.get(REPORT_5_CHANNEL_FACEBOOK), f"grid_report_5_facebook_v2_{manual_hash}"),
-        ("#### II. Báo cáo Google", enriched_tables.get(REPORT_5_CHANNEL_GOOGLE), f"grid_report_5_google_v2_{manual_hash}"),
-        ("#### III. Báo cáo Tổng Facebook + Google", enriched_tables.get(REPORT_5_CHANNEL_TOTAL), f"grid_report_5_tong_v2_{manual_hash}"),
+        ("#### I. Báo cáo Facebook", enriched_tables.get(REPORT_5_CHANNEL_FACEBOOK), f"grid_report_5_facebook_v3_{manual_hash}", True),
+        ("#### II. Báo cáo Google", enriched_tables.get(REPORT_5_CHANNEL_GOOGLE), f"grid_report_5_google_v3_{manual_hash}", True),
+        ("#### III. Báo cáo Tổng Facebook + Google", enriched_tables.get(REPORT_5_CHANNEL_TOTAL), f"grid_report_5_tong_v3_{manual_hash}", True),
+        ("#### IV. Facebook – Data Không Gọi", enriched_tables.get(REPORT_5_CHANNEL_DATA_KHONG_GOI), f"grid_report_5_data_khong_goi_v1_{manual_hash}", False),
     ]
 
-    all_empty = all(df is None or df.empty for _, df, _ in tables_config)
+    all_empty = all(df is None or df.empty for _, df, _, _ in tables_config)
     if all_empty:
         st.warning("⚠️ Không có dữ liệu để hiển thị.")
         return
 
-    for title, df, key in tables_config:
+    for title, df, key, include_costs in tables_config:
         st.markdown(title)
         if df is None or df.empty:
             st.warning("⚠️ Không có dữ liệu trong bảng này.")
@@ -610,14 +623,14 @@ def render_report_5(results_5, selected_sessions=None, repository=None):
 
         df_to_show = df.copy()
         gb = GridOptionsBuilder.from_dataframe(df_to_show)
-        configure_report5_grid_columns(gb)
+        configure_report5_grid_columns(gb, include_costs=include_costs)
 
         time_val = df_to_show[FIELD_TIME].iloc[0] if len(df_to_show) > 0 else ""
         pinned_row = aggregate_report_5_rows(df_to_show, time_val, "📊 TỔNG CỘNG")
 
         render_aggrid_report(df_to_show, gb, pinned_row, key, fit_columns=False)
 
-    # 6. Một nút download Excel chuyên biệt 3 sheet
+    # 6. Một nút download Excel chuyên biệt 4 sheet
     excel_sheets = []
     if enriched_tables.get(REPORT_5_CHANNEL_FACEBOOK) is not None and not enriched_tables[REPORT_5_CHANNEL_FACEBOOK].empty:
         excel_sheets.append(('BC5_Facebook', enriched_tables[REPORT_5_CHANNEL_FACEBOOK]))
@@ -625,10 +638,64 @@ def render_report_5(results_5, selected_sessions=None, repository=None):
         excel_sheets.append(('BC5_Google', enriched_tables[REPORT_5_CHANNEL_GOOGLE]))
     if enriched_tables.get(REPORT_5_CHANNEL_TOTAL) is not None and not enriched_tables[REPORT_5_CHANNEL_TOTAL].empty:
         excel_sheets.append(('BC5_Tong_FB_GG', enriched_tables[REPORT_5_CHANNEL_TOTAL]))
+    if enriched_tables.get(REPORT_5_CHANNEL_DATA_KHONG_GOI) is not None and not enriched_tables[REPORT_5_CHANNEL_DATA_KHONG_GOI].empty:
+        excel_sheets.append(('BC5_FB_Data_Khong_Goi', enriched_tables[REPORT_5_CHANNEL_DATA_KHONG_GOI], False))
 
     if excel_sheets:
         render_report_5_excel_download(
             excel_sheets,
             file_name='Bao_cao_Truyen_Thong_FB_GG_Theo_Do_Tuoi.xlsx',
             button_label='📥 Tải xuống Báo cáo 5 (Excel)'
+        )
+
+
+def render_report_6(results_6):
+    """Hiển thị BC6 MKT theo vị trí địa lý, tách Facebook / Google / Tổng."""
+    st.subheader("Bản xem trước: Báo cáo MKT theo Vị trí địa lý")
+    if not isinstance(results_6, dict):
+        st.warning("⚠️ Không có dữ liệu để hiển thị.")
+        return
+
+    st.markdown(
+        """
+        <div style="background:linear-gradient(135deg,#E8F5E9 0%,#E3F2FD 100%);border-left:4px solid #2E7D32;
+        border-radius:8px;padding:12px 16px;margin-bottom:12px;font-size:14px;line-height:1.6">
+        <b>🗺️ Cách đọc Báo cáo 6</b><br>
+        &bull; Hàng <b>Tỉnh/Thành phố</b> lấy trực tiếp từ <code>billing_address_street</code>; giá trị trống hiển thị <b>-</b>.<br>
+        &bull; <b>Tỉ lệ vị trí</b> = SL của vị trí / Tổng SL của cùng TC trong cùng bảng.<br>
+        &bull; <b>Tỉ lệ chốt</b> = Bills / SL; <b>% Bills</b> = Bills của vị trí / Tổng Bills của cùng TC.<br>
+        &bull; Facebook và Google tách riêng; bảng Tổng cộng số lượng rồi tính lại tỷ lệ. Không gồm Sinh viên Offline.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    tables = [
+        ("#### I. MKT Vị trí – Facebook", results_6.get(REPORT_6_CHANNEL_FACEBOOK), "grid_report_6_facebook_v1"),
+        ("#### II. MKT Vị trí – Google", results_6.get(REPORT_6_CHANNEL_GOOGLE), "grid_report_6_google_v1"),
+        ("#### III. MKT Vị trí – Tổng Facebook + Google", results_6.get(REPORT_6_CHANNEL_TOTAL), "grid_report_6_tong_v1"),
+    ]
+    for title, df, key in tables:
+        st.markdown(title)
+        if df is None or df.empty:
+            st.warning("⚠️ Không có dữ liệu phù hợp trong bảng này.")
+            continue
+        df_to_show = df.copy()
+        gb = GridOptionsBuilder.from_dataframe(df_to_show)
+        configure_report6_grid_columns(gb)
+        time_val = df_to_show[REPORT_6_FIELD_TIME].iloc[0] if len(df_to_show) > 0 else ""
+        pinned_row = aggregate_report_6_rows(df_to_show, time_val)
+        render_aggrid_report(df_to_show, gb, pinned_row, key, fit_columns=False)
+
+    excel_sheets = [
+        ("BC6_Facebook", results_6.get(REPORT_6_CHANNEL_FACEBOOK)),
+        ("BC6_Google", results_6.get(REPORT_6_CHANNEL_GOOGLE)),
+        ("BC6_Tong_FB_GG", results_6.get(REPORT_6_CHANNEL_TOTAL)),
+    ]
+    excel_sheets = [(name, df) for name, df in excel_sheets if df is not None and not df.empty]
+    if excel_sheets:
+        render_report_6_excel_download(
+            excel_sheets,
+            file_name="Bao_cao_MKT_Vi_tri_dia_ly.xlsx",
+            button_label="📥 Tải xuống Báo cáo 6 (Excel)",
         )

@@ -13,7 +13,7 @@ import json
 from config import get_api_key, get_url_base, get_headers
 from api_client import get_account_types, get_account_sources, get_users, fetch_accounts_with_progress
 from data_processing import expand_source_ids, build_filtering_conditions, transform_dataframe, build_department_options, build_user_ids_by_departments
-from reports import render_report_1, render_report_2, render_report_3, render_report_4, render_report_5
+from reports import render_report_1, render_report_2, render_report_3, render_report_4, render_report_5, render_report_6
 from time_utils import get_vn_now, format_fetch_time
 from manual_input_repository import get_repository
 from report_calculations import get_cached_base_reports
@@ -213,19 +213,20 @@ if st.session_state["raw_df"] is not None:
 
     # Cache riêng từng phiên, làm mới khi tải CRM hoặc đổi đợt.
     with st.spinner("Đang tự động xử lý các luồng báo cáo..."):
-        result, result_2, result_3, result_4, result_5 = get_cached_base_reports(
+        result, result_2, result_3, result_4, result_5, result_6 = get_cached_base_reports(
             df_raw, selected_sessions, st.session_state.get("raw_revision", 0)
         )
 
     st.success("Tạo báo cáo thành công!")
 
-    # Hiển thị báo cáo trong 5 tab
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    # Hiển thị báo cáo trong 6 tab
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📋 Báo cáo 1: Theo Đợt học thử & Người phụ trách",
         "🌐 Báo cáo 2: Theo Nguồn khách hàng & Nhóm",
         "👥 Báo cáo 3: Thống kê theo Nguồn & Độ Tuổi",
         "📡 Báo cáo 4: Nguồn Onl/Off & Bill cọc",
         "📊 Báo cáo 5: Truyền Thông (Nguồn × Độ Tuổi)",
+        "🌍 Báo cáo 6: MKT theo Vị trí địa lý",
     ])
 
     repo = get_repository()
@@ -245,3 +246,6 @@ if st.session_state["raw_df"] is not None:
     with tab5:
         effective_sessions = selected_sessions if selected_sessions else unique_sessions
         render_report_5(result_5, effective_sessions, repository=repo)
+
+    with tab6:
+        render_report_6(result_6)
