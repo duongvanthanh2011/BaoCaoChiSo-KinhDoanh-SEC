@@ -4,7 +4,7 @@ Tập trung toàn bộ hằng số, danh sách nhóm tuổi, TC, field nội b�
 Không phụ thuộc Streamlit hoặc pandas.
 """
 
-REPORT_5_SCHEMA_VERSION = 5
+REPORT_5_SCHEMA_VERSION = 7
 
 REPORT_5_CHANNEL_FACEBOOK = "facebook"
 REPORT_5_CHANNEL_GOOGLE = "google"

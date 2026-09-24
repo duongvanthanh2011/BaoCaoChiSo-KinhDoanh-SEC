@@ -355,12 +355,20 @@ def classify_report_3_source(label):
 # PHÂN LOẠI & MỞ RỘNG NGUỒN CHO BÁO CÁO 4
 # ==========================================
 
-REPORT_4_ONL_ROWS = [f"{ch} TC{n}" for n in range(1, 7) for ch in ("Facebook", "Google")]
+REPORT_4_SCHEMA_VERSION = 3
+REPORT_4_STANDARD_ONL_ROWS = [f"{ch} TC{n}" for n in range(1, 7) for ch in ("Facebook", "Google")]
+# ORG và Đã học chỉ là dòng tổng hợp riêng của bảng Onl, không thuộc bảng Tổng.
+REPORT_4_ONL_ROWS = REPORT_4_STANDARD_ONL_ROWS + ["ORG", "Đã học"]
+REPORT_4_TONG_ROWS = REPORT_4_STANDARD_ONL_ROWS
 REPORT_4_OFF_ROWS = [f"Facebook TC{n}" for n in range(1, 7)]
 
-_RE_ONL_FB = re.compile(r"^ADS TRUONG CHINH.*ADS FB([1-6])$")
+# Nhận cả "... ADS FB3" và "... FB3", nhưng vẫn phải là nguồn bắt đầu
+# bằng ADS TRUONG CHINH và kết thúc đúng FB1..FB6.
+_RE_ONL_FB = re.compile(r"^ADS TRUONG CHINH.*\b(?:ADS\s+)?FB([1-6])$")
 _RE_ONL_GG = re.compile(r"^ADS TRUONG CHINH.*ADS GG([1-6])$")
 _RE_OFF    = re.compile(r"OFF(?: ?TC)? ?([1-6])$")
+_RE_R4_ORG_OR_STAFF = re.compile(r"\b(?:ORG|STAFF)\b")
+_RE_R4_DA_HOC = re.compile(r"\bDA[\s\-_/\.]*HOC\b")
 
 def _normalize_source_label(label):
     """Uppercase, bỏ dấu tiếng Việt (Đ→D), gộp khoảng trắng — dùng cho khớp regex BC4."""
@@ -373,6 +381,12 @@ def classify_report_4_source(label):
     if not isinstance(label, str) or not label.strip():
         return None
     norm = _normalize_source_label(label)
+    # Hai dòng tổng hợp đặc biệt chỉ thuộc bảng Onl. ORG ưu tiên nếu một nhãn
+    # hiếm gặp đồng thời có cả ORG/STAFF và Đã học, để tránh đếm cùng nguồn hai lần.
+    if _RE_R4_ORG_OR_STAFF.search(norm):
+        return ("ORG", "onl")
+    if _RE_R4_DA_HOC.search(norm):
+        return ("Đã học", "onl")
     m = _RE_ONL_FB.search(norm)
     if m: return (f"Facebook TC{m.group(1)}", "onl")
     m = _RE_ONL_GG.search(norm)
@@ -406,7 +420,9 @@ _RE_R5_FB_NORMAL = re.compile(r"^ADS\b.*\bFB([1-6])$")
 _RE_R5_FB_CV_OFF = re.compile(r"^ADS\b.*\bCV\s+OFF\s*([1-6])$")
 _RE_R5_SV1_END = re.compile(r"^ADS\b.*\bSV1$")
 _RE_R5_SV_OFFLINE = re.compile(r"\bSINH VIEN OFFLINE\s*([1-6])\b")
-_RE_R5_FB_KOG = re.compile(r"^DATA KHONG GOI\b.*\bKOG([1-6])$")
+# Bảng IV nhận cả hai mẫu: KOGn cũ và ADS ... DATA KHONG GOI KOG FBn mới.
+_RE_R5_FB_KOG_LEGACY = re.compile(r"^DATA KHONG GOI\b.*\bKOG([1-6])$")
+_RE_R5_FB_KOG_ADS = re.compile(r"^ADS\b.*\bDATA\s+KHONG\s+GOI\s+KOG\s+FB([1-6])$")
 _RE_R5_GG = re.compile(r"^ADS\b.*\bGG([1-6])$")
 
 
@@ -420,6 +436,11 @@ def classify_report_5_source(label):
         return None
     norm = _normalize_source_label(label)
     if _RE_R5_EXCLUDE_WORDS.search(norm):
+        return None
+
+    # Nguồn Data Không Gọi kết thúc FBn phải dành riêng cho bảng IV,
+    # không được rơi vào Facebook thường chỉ vì có hậu tố FBn.
+    if _RE_R5_FB_KOG_ADS.search(norm):
         return None
 
     if not _RE_R5_ADS_START.search(norm):
@@ -457,13 +478,16 @@ def classify_report_5_sv_offline_source(label):
 
 
 def classify_report_5_data_khong_goi_source(label):
-    """Nhận diện riêng Facebook Data Không Gọi KOG1..KOG6 cho bảng IV."""
+    """Nhận diện bảng IV: DATA KHÔNG GỌI ... KOG1..6 hoặc ADS ... KOG FB1..6."""
     if not isinstance(label, str) or not label.strip():
         return None
     norm = _normalize_source_label(label)
     if _RE_R5_EXCLUDE_WORDS.search(norm):
         return None
-    matched = _RE_R5_FB_KOG.search(norm)
+    matched = _RE_R5_FB_KOG_ADS.search(norm)
+    if matched:
+        return f"TC{matched.group(1)}"
+    matched = _RE_R5_FB_KOG_LEGACY.search(norm)
     return f"TC{matched.group(1)}" if matched else None
 
 

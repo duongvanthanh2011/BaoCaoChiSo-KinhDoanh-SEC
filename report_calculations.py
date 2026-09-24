@@ -26,6 +26,8 @@ from data_processing import (
     REPORT_3_STUDENT_YOUNG_COLUMN,
     REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
     REPORT_4_ONL_ROWS,
+    REPORT_4_TONG_ROWS,
+    REPORT_4_SCHEMA_VERSION,
     REPORT_4_OFF_ROWS,
     classify_age_group,
     expand_report_3_sources_with_weights,
@@ -121,7 +123,7 @@ def get_cached_base_reports(raw_df, selected_sessions, revision):
     sessions = tuple(sorted(set(str(s) for s in selected_sessions)))
     key = (
         revision, id(raw_df), sessions, st.session_state.get('fetch_time'),
-        REPORT_5_SCHEMA_VERSION, REPORT_6_SCHEMA_VERSION,
+        REPORT_4_SCHEMA_VERSION, REPORT_5_SCHEMA_VERSION, REPORT_6_SCHEMA_VERSION,
     )
     cached = st.session_state.get('_base_reports_cache')
     if cached is None or cached['key'] != key:
@@ -945,6 +947,7 @@ def _merge_with_templates(rec_df, data_cols):
     """
     template = pd.DataFrame({'Nguồn': REPORT_4_ONL_ROWS})
     off_template = pd.DataFrame({'Nguồn': REPORT_4_OFF_ROWS})
+    tong_template = pd.DataFrame({'Nguồn': REPORT_4_TONG_ROWS})
 
     def _build_table(table_key, tmpl):
         if (
@@ -971,7 +974,7 @@ def _merge_with_templates(rec_df, data_cols):
 
     combined = pd.concat([onl_res, off_res], ignore_index=True)
     tong_grouped = combined.groupby('Nguồn', as_index=False)[data_cols].sum()
-    tong_res = template.merge(tong_grouped, on='Nguồn', how='left')
+    tong_res = tong_template.merge(tong_grouped, on='Nguồn', how='left')
     for c in data_cols:
         tong_res[c] = pd.to_numeric(tong_res.get(c), errors='coerce').fillna(0.0)
 
@@ -990,15 +993,15 @@ def build_report_4_tables(df_filtered, fetch_time):
 
     df_calc = df_filtered.copy()
 
-    # Tương thích phiên cũ: tự sinh cột trọng số BC4 nếu thiếu
-    if "_report_4_sources_with_weights" not in df_calc.columns:
-        source_details = df_calc.get(
-            "account_source_details",
-            pd.Series(index=df_calc.index, dtype=object),
-        )
-        df_calc["_report_4_sources_with_weights"] = source_details.apply(
-            expand_report_4_sources_with_weights
-        )
+    # Luôn phân loại lại danh sách nguồn gốc để quy tắc ORG/Đã học có hiệu lực
+    # ngay cả khi phiên hiện tại đang giữ DataFrame đã tải trước khi cập nhật mã.
+    source_details = df_calc.get(
+        "account_source_details",
+        pd.Series(index=df_calc.index, dtype=object),
+    )
+    df_calc["_report_4_sources_with_weights"] = source_details.apply(
+        expand_report_4_sources_with_weights
+    )
 
     # Đảm bảo có cột chỉ báo Data_coc_chot
     if "Data_coc_chot" not in df_calc.columns:

@@ -595,7 +595,7 @@ def render_report_5(results_5, selected_sessions=None, repository=None):
         ">
             <b>📊 Báo cáo Truyền Thông: Facebook & Google theo Nhóm tuổi</b><br>
             &bull; Bảng <b>Facebook</b> gồm nguồn Facebook thường, Facebook CV OFF và Facebook Sinh viên Offline; bảng <b>Tổng Facebook + Google</b> cũng bao gồm phần Sinh viên Offline này.<br>
-            &bull; <b>Facebook – Data Không Gọi</b> chỉ tổng hợp nguồn có hậu tố <b>KOG1–KOG6</b>, tách khỏi ba bảng Facebook, Google và Tổng Facebook + Google; vẫn giữ trọng số nguồn 1/N.<br>
+            &bull; <b>Facebook – Data Không Gọi</b> tổng hợp cả nguồn cũ có hậu tố <b>KOG1–KOG6</b> và nguồn mới bắt đầu bằng <b>ADS</b>, kết thúc <b>DATA KHÔNG GỌI KOG FB1–FB6</b>; tách khỏi ba bảng Facebook, Google và Tổng Facebook + Google; vẫn giữ trọng số nguồn 1/N.<br>
             &bull; Bảng Data Không Gọi chỉ có số liệu CRM (Data, Bills, sai số, độ tuổi), <b>không phân bổ chi phí</b> do chi phí hiện chỉ được nhập chung theo Facebook/Google × TC.<br>
             &bull; Bảng hỗ trợ cuộn ngang để theo dõi toàn bộ các chỉ số chi tiết.
         </div>
