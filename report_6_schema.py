@@ -1,6 +1,6 @@
 """Schema duy nhất của Báo cáo 6: MKT theo vị trí địa lý."""
 
-REPORT_6_SCHEMA_VERSION = 1
+REPORT_6_SCHEMA_VERSION = 2
 
 REPORT_6_CHANNEL_FACEBOOK = "facebook"
 REPORT_6_CHANNEL_GOOGLE = "google"

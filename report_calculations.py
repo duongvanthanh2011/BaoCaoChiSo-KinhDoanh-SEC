@@ -1657,7 +1657,13 @@ def build_report_6_tables(df_filtered, fetch_time):
     source_weights = source_details.apply(expand_report_6_tc_weights)
     locations = df_calc.get("_report_6_location")
     if locations is None:
-        locations = df_calc.get("billing_address_street", pd.Series(index=df_calc.index, dtype=object)).apply(normalize_report_6_location)
+        locations = df_calc.get(
+            "billing_address_street",
+            pd.Series(index=df_calc.index, dtype=object),
+        )
+    # Luôn chuẩn hóa lại tại biên tính toán để dữ liệu đã tiền xử lý bằng
+    # phiên bản cũ cũng không tạo thành các nhóm địa chỉ khác nhau.
+    locations = locations.apply(normalize_report_6_location)
 
     records = []
     for idx, row in df_calc.iterrows():

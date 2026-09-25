@@ -718,7 +718,7 @@ def render_report_6(results_6):
         <div style="background:linear-gradient(135deg,#E8F5E9 0%,#E3F2FD 100%);border-left:4px solid #2E7D32;
         border-radius:8px;padding:12px 16px;margin-bottom:12px;font-size:14px;line-height:1.6">
         <b>🗺️ Cách đọc Báo cáo 6</b><br>
-        &bull; Hàng <b>Tỉnh/Thành phố</b> lấy trực tiếp từ <code>billing_address_street</code>; giá trị trống hiển thị <b>-</b>.<br>
+        &bull; Hàng <b>Tỉnh/Thành phố</b> lấy từ <code>billing_address_street</code>, được chuẩn hóa khoảng trắng và cách viết hoa/thường; giá trị trống hiển thị <b>-</b>.<br>
         &bull; <b>Tỉ lệ vị trí</b> = SL của vị trí / Tổng SL của cùng TC trong cùng bảng.<br>
         &bull; <b>Tỉ lệ chốt</b> = Bills / SL; <b>% Bills</b> = Bills của vị trí / Tổng Bills của cùng TC.<br>
         &bull; Facebook và Google tách riêng; bảng Tổng cộng số lượng rồi tính lại tỷ lệ. Không gồm Sinh viên Offline.

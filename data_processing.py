@@ -521,10 +521,19 @@ def expand_report_5_sources_with_weights(account_source_details):
 
 
 def normalize_report_6_location(value):
-    """Chuẩn hóa nhẹ địa chỉ cho BC6, không tự suy diễn hoặc gộp tỉnh/thành."""
+    """Chuẩn hóa cách viết địa chỉ BC6, không tự suy diễn hoặc gộp tỉnh/thành."""
     if not isinstance(value, str) or not value.strip():
         return "-"
-    return re.sub(r"\s+", " ", value).strip()
+
+    # NFC gom các chuỗi Unicode tương đương về cùng một biểu diễn; title()
+    # chuẩn hóa khác biệt hoa/thường như "Hà nội" và "HÀ NỘI" thành "Hà Nội".
+    location = unicodedata.normalize("NFC", value)
+    location = re.sub(r"\s+", " ", location).strip().title()
+
+    # Giữ cách viết quen thuộc của các chữ viết tắt phổ biến sau khi title().
+    location = re.sub(r"\bTp(?=\.|\b)", "TP", location)
+    location = re.sub(r"\bHcm\b", "HCM", location)
+    return location
 
 
 def expand_report_6_tc_weights(account_source_details):
