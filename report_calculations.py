@@ -82,6 +82,9 @@ REPORT_2_ADVISOR_COLUMN = 'Số CVHT đi làm'
 REPORT_2_AVERAGE_COLUMN = 'Data trung bình/ngày/CVHT'
 COC_COL_SUFFIX = " (Cọc Chốt)"
 
+# Nhóm tư vấn tuyển sinh 1. Lọc theo ID phòng ban, không theo tên hiển thị.
+REPORT_1_TVTS1_DEPARTMENT_IDS = frozenset({18, 19, 20, 21, 27, 28, 29})
+
 
 def _r3_data_display_field(group):
     return f"{group}::data_display"
@@ -118,24 +121,44 @@ def get_report_3_column_specs():
     return specs
 
 
-def get_cached_base_reports(raw_df, selected_sessions, revision):
+def get_cached_base_reports(
+    raw_df,
+    selected_sessions,
+    revision,
+    department_filter_active=False,
+    tvts1_manager_ids=(),
+):
     """Một bộ kết quả nền trong từng phiên; input không làm tính lại dữ liệu CRM."""
     sessions = tuple(sorted(set(str(s) for s in selected_sessions)))
+    normalized_manager_ids = set()
+    for value in tvts1_manager_ids:
+        try:
+            normalized_manager_ids.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    normalized_tvts1_manager_ids = tuple(sorted(normalized_manager_ids))
     key = (
         revision, id(raw_df), sessions, st.session_state.get('fetch_time'),
         REPORT_4_SCHEMA_VERSION, REPORT_5_SCHEMA_VERSION, REPORT_6_SCHEMA_VERSION,
+        bool(department_filter_active), normalized_tvts1_manager_ids,
     )
     cached = st.session_state.get('_base_reports_cache')
     if cached is None or cached['key'] != key:
         filtered = raw_df[raw_df['ĐỢT HỌC THỬ'].isin(sessions)].copy() if sessions else raw_df.copy()
         filtered = add_indicator_columns(filtered)
+        result_1 = compute_report_1(filtered)
         results = (
-            compute_report_1(filtered),
+            result_1,
             compute_report_2(filtered),
             compute_report_3(filtered),
             compute_report_4(filtered),
             compute_report_5(filtered),
             compute_report_6(filtered),
+            compute_report_1_tvts1(
+                filtered,
+                normalized_tvts1_manager_ids,
+                department_filter_active,
+            ),
         )
         cached = {'key': key, 'results': results}
         st.session_state['_base_reports_cache'] = cached
@@ -480,6 +503,37 @@ def _aggregate_report_1_row(dot_manual_df=None):
             '% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng': (tong_coc_ht / sub_base * 100) if sub_base else 0,
         }
     return aggregate_fn
+
+
+def compute_report_1_tvts1(df_filtered, tvts1_manager_ids=(), department_filter_active=False):
+    """Tổng hợp riêng TVTS 1 theo account_manager của các dept_id được chọn."""
+    empty = pd.DataFrame(columns=compute_report_1(pd.DataFrame()).columns)
+    if not department_filter_active or df_filtered.empty or "account_manager" not in df_filtered.columns:
+        return empty
+
+    manager_ids = set()
+    for value in tvts1_manager_ids:
+        try:
+            manager_ids.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    if not manager_ids:
+        return empty
+
+    account_managers = pd.to_numeric(df_filtered["account_manager"], errors="coerce")
+    tvts1_data = df_filtered[account_managers.isin(manager_ids)].copy()
+    if tvts1_data.empty:
+        return empty
+
+    detail_rows = compute_report_1(tvts1_data)
+    if detail_rows.empty:
+        return empty
+
+    fetch_time = detail_rows['Thời gian xuất data'].iloc[0] if len(detail_rows) else ''
+    total_row = _aggregate_report_1_row()(detail_rows, fetch_time, 'TỔNG CÁC ĐỢT ĐÃ CHỌN', '')
+    total_row['Phòng ban'] = 'TVTS 1'
+    total_row['Người phụ trách'] = 'Tổng hợp các phòng ban GREEN đã chọn'
+    return pd.DataFrame([total_row])[detail_rows.columns]
 
 
 def prepare_excel_report_1(df_edited, dot_manual_df=None):

@@ -108,7 +108,13 @@ __all__ = [
 ]
 
 
-def render_report_1(result, repository=None):
+def render_report_1(
+    result,
+    repository=None,
+    tvts1_result=None,
+    tvts1_filter_active=False,
+    tvts1_department_ids=(),
+):
     """Hiển thị Báo cáo 1 bằng bảng phân cấp AgGrid hỗ trợ chỉnh sửa và tính toán động."""
     if repository is None:
         repository = get_repository()
@@ -209,14 +215,58 @@ def render_report_1(result, repository=None):
     # Hiển thị AgGrid
     render_aggrid_report(df_to_show, gb, pinned_row, f"grid_report_1_v3_{manual_hash}")
 
+    # TVTS 1 là bảng riêng để không bị cộng vào group footer/tổng của Báo cáo 1 chính.
+    has_tvts1_data = isinstance(tvts1_result, pd.DataFrame) and not tvts1_result.empty
+    if tvts1_filter_active:
+        st.markdown("#### Tổng hợp TVTS 1")
+        if not tvts1_department_ids:
+            st.info("Không có phòng ban TVTS 1 trong bộ lọc phòng ban đã chọn.")
+        elif not has_tvts1_data:
+            st.info("Không có dữ liệu TVTS 1 trong phạm vi phòng ban và đợt học thử đang chọn.")
+        else:
+            st.caption(
+                "Tổng hợp theo dept_id: " + ", ".join(str(dept_id) for dept_id in tvts1_department_ids) + ". "
+                "Cọc Khác và Tổng Cọc Học Thử không được phân bổ theo phòng ban nên không hiển thị ở bảng này."
+            )
+            tvts1_to_show = tvts1_result.copy()
+            gb_tvts1 = GridOptionsBuilder.from_dataframe(tvts1_to_show)
+            gb_tvts1.configure_column("Thời gian xuất data", width=140, pinned="left")
+            gb_tvts1.configure_column("ĐỢT HỌC THỬ", width=190, pinned="left")
+            gb_tvts1.configure_column("Phòng ban", width=105, pinned="left")
+            gb_tvts1.configure_column("Người phụ trách", width=260, pinned="left")
+            configure_standard_grid_columns(gb_tvts1, count_cols)
+            gb_tvts1.configure_column(
+                "% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng",
+                hide=True,
+            )
+            render_aggrid_report(tvts1_to_show, gb_tvts1, None, f"grid_report_1_tvts1_{manual_hash}")
+
     # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
     df_excel = prepare_excel_report_1(st.session_state[state_key], dot_manual_df)
-    render_excel_download(
-        df_excel,
-        sheet_name='BC_Dot_Nguoi_Phu_Trach',
-        file_name='Bao_cao_Dot_Nguoi_Phu_Trach.xlsx',
-        button_label='📥 Tải xuống Báo cáo 1 (Excel)'
-    )
+    if has_tvts1_data:
+        tvts1_excel = tvts1_result.drop(
+            columns=[
+                'Cọc Khác',
+                'Tổng Cọc Học Thử',
+                '% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng',
+            ],
+            errors='ignore',
+        )
+        render_excel_download_multi_sheets(
+            [
+                ('BC_Dot_Nguoi_Phu_Trach', df_excel),
+                ('BC1_TVTS1', tvts1_excel),
+            ],
+            file_name='Bao_cao_Dot_Nguoi_Phu_Trach.xlsx',
+            button_label='📥 Tải xuống Báo cáo 1 (Excel)',
+        )
+    else:
+        render_excel_download(
+            df_excel,
+            sheet_name='BC_Dot_Nguoi_Phu_Trach',
+            file_name='Bao_cao_Dot_Nguoi_Phu_Trach.xlsx',
+            button_label='📥 Tải xuống Báo cáo 1 (Excel)'
+        )
 
 
 def render_report_2(result_2, repository=None):

@@ -16,7 +16,7 @@ from data_processing import expand_source_ids, build_filtering_conditions, trans
 from reports import render_report_1, render_report_2, render_report_3, render_report_4, render_report_5, render_report_6
 from time_utils import get_vn_now, format_fetch_time
 from manual_input_repository import get_repository
-from report_calculations import get_cached_base_reports
+from report_calculations import get_cached_base_reports, REPORT_1_TVTS1_DEPARTMENT_IDS
 
 # ==========================================
 # KHỞI TẠO CẤU HÌNH
@@ -51,6 +51,12 @@ if "is_loading" not in st.session_state:
 # Fetch key — hash của bộ lọc đã dùng, tránh tải lại cùng bộ lọc
 if "last_fetch_key" not in st.session_state:
     st.session_state["last_fetch_key"] = ""
+if "loaded_department_filter_active" not in st.session_state:
+    st.session_state["loaded_department_filter_active"] = False
+if "loaded_tvts1_department_ids" not in st.session_state:
+    st.session_state["loaded_tvts1_department_ids"] = ()
+if "loaded_tvts1_manager_ids" not in st.session_state:
+    st.session_state["loaded_tvts1_manager_ids"] = ()
 
 if not API_KEY:
     st.warning("⚠️ Chưa cấu hình `GETFLY_API_KEY` trong file `.env`. Hãy cấu hình để sử dụng đầy đủ chức năng.")
@@ -139,10 +145,20 @@ if submitted and not is_currently_loading:
     # Tính hash key của bộ lọc hiện tại
     current_fetch_key = compute_fetch_key(selected_departments, selected_sources, selected_types, date_range)
     last_fetch_key = st.session_state.get("last_fetch_key", "")
+    tvts1_departments = [
+        item for item in selected_departments
+        if str(item.get("dept_id")) in {str(dept_id) for dept_id in REPORT_1_TVTS1_DEPARTMENT_IDS}
+    ]
+    tvts1_department_ids = tuple(sorted({int(item["dept_id"]) for item in tvts1_departments}))
+    tvts1_manager_ids = tuple(build_user_ids_by_departments(tvts1_departments, users_list))
+    department_filter_active = bool(selected_departments)
 
     # Nếu cùng bộ lọc → dữ liệu đã có, skip API fetch
     if current_fetch_key == last_fetch_key and st.session_state["raw_df"] is not None:
         st.info("✅ Dữ liệu với cùng bộ lọc đã được tải trước đó. Sử dụng dữ liệu hiện có.")
+        st.session_state["loaded_department_filter_active"] = department_filter_active
+        st.session_state["loaded_tvts1_department_ids"] = tvts1_department_ids
+        st.session_state["loaded_tvts1_manager_ids"] = tvts1_manager_ids
     else:
         # Đánh dấu trạng thái loading — ngăn người dùng nhấn lại trong lúc đang xử lý
         st.session_state["is_loading"] = True
@@ -182,6 +198,9 @@ if submitted and not is_currently_loading:
             st.session_state["filtered_src_ids"] = src_ids
             st.session_state["filtered_type_ids"] = type_ids
             st.session_state["last_fetch_key"] = current_fetch_key
+            st.session_state["loaded_department_filter_active"] = department_filter_active
+            st.session_state["loaded_tvts1_department_ids"] = tvts1_department_ids
+            st.session_state["loaded_tvts1_manager_ids"] = tvts1_manager_ids
             st.success(f"Đã tải thành công {len(df)} bản ghi từ hệ thống.")
 
         except Exception as e:
@@ -213,8 +232,12 @@ if st.session_state["raw_df"] is not None:
 
     # Cache riêng từng phiên, làm mới khi tải CRM hoặc đổi đợt.
     with st.spinner("Đang tự động xử lý các luồng báo cáo..."):
-        result, result_2, result_3, result_4, result_5, result_6 = get_cached_base_reports(
-            df_raw, selected_sessions, st.session_state.get("raw_revision", 0)
+        result, result_2, result_3, result_4, result_5, result_6, result_1_tvts1 = get_cached_base_reports(
+            df_raw,
+            selected_sessions,
+            st.session_state.get("raw_revision", 0),
+            department_filter_active=st.session_state.get("loaded_department_filter_active", False),
+            tvts1_manager_ids=st.session_state.get("loaded_tvts1_manager_ids", ()),
         )
 
     st.success("Tạo báo cáo thành công!")
@@ -232,7 +255,13 @@ if st.session_state["raw_df"] is not None:
     repo = get_repository()
 
     with tab1:
-        render_report_1(result, repository=repo)
+        render_report_1(
+            result,
+            repository=repo,
+            tvts1_result=result_1_tvts1,
+            tvts1_filter_active=st.session_state.get("loaded_department_filter_active", False),
+            tvts1_department_ids=st.session_state.get("loaded_tvts1_department_ids", ()),
+        )
 
     with tab2:
         render_report_2(result_2, repository=repo)
