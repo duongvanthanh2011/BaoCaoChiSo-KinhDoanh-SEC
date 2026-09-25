@@ -921,12 +921,15 @@ def configure_report3_grid_columns(gb):
         REPORT_3_SCHOOL_WORKER_COLUMN: style_r3_at_most_20_green,
         REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN: style_r3_at_least_80_green,
     }
-    for group in groups:
+    for group_index, group in enumerate(groups):
         bills_field = f"{group}{COC_COL_SUFFIX}"
         is_total = group == 'TỔNG'
         child_style = {'fontWeight': 'bold'} if is_total else None
+        # Vạch ngăn nằm ở cạnh phải của cột con cuối cùng, nên chỉ phân tách
+        # giữa các nhóm tuổi mà không chia nhỏ các cột bên trong một nhóm.
+        has_group_divider = group_index < len(groups) - 1
         data_child = {
-            'headerName': 'Data (% Data)', 'field': group, 'aggFunc': 'sum',
+            'headerName': 'Data (Data / Tổng Data)', 'field': group, 'aggFunc': 'sum',
             'cellRenderer': formatter_r3_data, 'width': 130,
         }
         if group in style_by_group:
@@ -941,21 +944,42 @@ def configure_report3_grid_columns(gb):
                 result['cellStyle'] = child_style
             return result
 
-        col_defs[group] = {
+        children = [
+            data_child,
+            child('Bills (Bills / Tổng Bills)', bills_field, 130, aggFunc='sum', cellRenderer=formatter_r3_bills),
+            child('Tỷ lệ chốt (Bills / Data)', f'{group}::close_rate', 110,
+                  valueGetter=getter_r3_close_rate, valueFormatter=pct_formatter,
+                  dataField=group, billsField=bills_field),
+            child('Tỷ lệ Bills (Bills / Tổng Data)', f'{group}::bills_over_total_data', 135,
+                  valueGetter=getter_r3_bills_over_total_data, valueFormatter=pct_formatter,
+                  billsField=bills_field),
+        ]
+        group_def = {
             'headerName': group,
-            'children': [
-                data_child,
-                child('Bills (% Bills)', bills_field, 130, aggFunc='sum', cellRenderer=formatter_r3_bills),
-                child('Tỷ lệ chốt', f'{group}::close_rate', 110,
-                      valueGetter=getter_r3_close_rate, valueFormatter=pct_formatter,
-                      dataField=group, billsField=bills_field),
-                child('Bills / Tổng Data', f'{group}::bills_over_total_data', 135,
-                      valueGetter=getter_r3_bills_over_total_data, valueFormatter=pct_formatter,
-                      billsField=bills_field),
-            ],
+            'children': children,
         }
+        if has_group_divider:
+            group_def['headerClass'] = 'r3-group-divider'
+            children[-1]['headerClass'] = 'r3-group-divider'
+            children[-1]['cellClass'] = 'r3-group-divider'
+        col_defs[group] = group_def
 
     gb._GridOptionsBuilder__grid_options['columnDefs'] = col_defs
+
+
+# CSS chỉ được truyền cho AgGrid của Báo cáo 3. Class được gắn vào tiêu đề
+# nhóm, tiêu đề cột cuối và toàn bộ ô của cột cuối để vạch dọc liền mạch.
+REPORT_3_GRID_CUSTOM_CSS = {
+    '.ag-header-group-cell.r3-group-divider': {
+        'border-right': '2px solid #94a3b8 !important',
+    },
+    '.ag-header-cell.r3-group-divider': {
+        'border-right': '2px solid #94a3b8 !important',
+    },
+    '.ag-cell.r3-group-divider': {
+        'border-right': '2px solid #94a3b8 !important',
+    },
+}
 
 
 # ==========================================

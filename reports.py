@@ -20,6 +20,7 @@ from report_utils import (
     configure_standard_grid_columns,
     configure_report2_grid_columns,
     configure_report3_grid_columns,
+    REPORT_3_GRID_CUSTOM_CSS,
     configure_report4_grid_columns,
     configure_report5_grid_columns,
     configure_report6_grid_columns,
@@ -475,10 +476,10 @@ def render_report_3(result_3):
             line-height: 1.6;
         ">
             <b>📝 Ghi chú cách đọc các nhóm cột:</b><br>
-            &bull; <b>Data (% Data)</b> — tổng trọng số data của nhóm tuổi và tỷ trọng trên <i>TỔNG data</i> của cùng dòng.<br>
-            &bull; <b>Bills (% Bills)</b> — data có Mối quan hệ <code>ĐÃ CỌC</code>, <code>ĐÃ CHỐT FULL</code> hoặc <code>ĐÃ CHỐT - TIỀM NĂNG UPSALE</code>, cùng tỷ trọng trên <i>TỔNG Bills</i> của dòng.<br>
-            &bull; <b>Tỷ lệ chốt</b> = Bills của nhóm tuổi / Data của chính nhóm tuổi. Ví dụ: 3 Bills / 78 Data = 3,85%.<br>
-            &bull; <b>Bills / Tổng Data</b> = Bills của nhóm tuổi / TỔNG data của dòng. Ví dụ: 3 Bills / 675 Data = 0,44%.<br>
+            &bull; <b>Data (Data / Tổng Data)</b> — tổng trọng số data của nhóm tuổi và tỷ trọng trên <i>TỔNG data</i> của cùng dòng.<br>
+            &bull; <b>Bills (Bills / Tổng Bills)</b> — data có Mối quan hệ <code>ĐÃ CỌC</code>, <code>ĐÃ CHỐT FULL</code> hoặc <code>ĐÃ CHỐT - TIỀM NĂNG UPSALE</code>, cùng tỷ trọng trên <i>TỔNG Bills</i> của dòng.<br>
+            &bull; <b>Tỷ lệ chốt (Bills / Data)</b>. Ví dụ: 3 Bills / 78 Data = 3,85%.<br>
+            &bull; <b>Tỷ lệ Bills (Bills / Tổng Data)</b>. Ví dụ: 3 Bills / 675 Data = 0,44%.<br>
             &bull; Các tỷ lệ ở dòng tổng theo đợt và <b>📊 TỔNG CỘNG</b> luôn tính lại từ tổng Bills và tổng Data, không cộng hoặc lấy trung bình các tỷ lệ.
         </div>
         """,
@@ -486,7 +487,13 @@ def render_report_3(result_3):
     )
 
     # Hiển thị AgGrid (đồng nhất giao diện & font chữ với Báo cáo 1 và 2)
-    render_aggrid_report(df_to_show, gb, pinned_row, "grid_report_3_v5")
+    render_aggrid_report(
+        df_to_show,
+        gb,
+        pinned_row,
+        "grid_report_3_v6",
+        custom_css=REPORT_3_GRID_CUSTOM_CSS,
+    )
 
     # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
     df_excel = prepare_excel_report_3(df_to_show)
