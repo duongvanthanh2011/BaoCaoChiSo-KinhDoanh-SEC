@@ -18,6 +18,16 @@ REPORT_5_TC_ROWS = (
 
 REPORT_5_PARENT_GROUP = "Phụ huynh có con C2, C3"
 
+# Ngưỡng cảnh báo màu đỏ trên bảng Báo cáo 5. Các giá trị phần trăm trong
+# DataFrame được lưu theo thang 0..100 (ví dụ 7.5 nghĩa là 7.5%).
+REPORT_5_ERROR_PERCENT_RED_THRESHOLD = 7.0
+REPORT_5_SCHOOL_PARENT_RATIO_RED_THRESHOLD = 30.0
+REPORT_5_SCHOOL_PARENT_GROUPS = (
+    "Học sinh cấp 2",
+    "Học sinh cấp 3",
+    REPORT_5_PARENT_GROUP,
+)
+
 REPORT_5_AGE_GROUPS = (
     "Học sinh cấp 2",
     "Học sinh cấp 3",

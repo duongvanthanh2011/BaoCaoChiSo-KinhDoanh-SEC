@@ -1068,6 +1068,40 @@ function(params) {
 """)
 
 
+def _build_report5_error_alert_style(threshold):
+    """Tô đỏ riêng ô phần trăm sai số khi vượt ngưỡng cảnh báo."""
+    return JsCode(f"""
+function(params) {{
+    var value = Number(params.value);
+    if (!Number.isFinite(value) || value <= {threshold}) return {{}};
+    return {{'backgroundColor': '#ffcccc'}};
+}}
+""")
+
+
+def _build_report5_school_parent_alert_style(groups, threshold, age_ratio_field):
+    """
+    Tô đồng thời ba ô tỉ lệ độ tuổi khi tổng tỉ lệ của ba nhóm vượt ngưỡng.
+    Dùng chung một hàm style cho cả ba cột để điều kiện luôn đồng nhất.
+    """
+    ratio_fields = [age_ratio_field(group) for group in groups]
+    total_expression = " + ".join(
+        f"toNumber(row[{field!r}])" for field in ratio_fields
+    )
+    return JsCode(f"""
+function(params) {{
+    var row = params.data || (params.node && params.node.aggData) || {{}};
+    function toNumber(value) {{
+        var number = Number(value);
+        return Number.isFinite(number) ? number : 0;
+    }}
+    var combinedRatio = {total_expression};
+    if (combinedRatio <= {threshold}) return {{}};
+    return {{'backgroundColor': '#ffcccc'}};
+}}
+""")
+
+
 def configure_report5_grid_columns(gb, include_costs=True):
     """
     Cấu hình các cột cho Báo cáo 5: Truyền Thông (Facebook & Google × Độ Tuổi).
@@ -1076,6 +1110,9 @@ def configure_report5_grid_columns(gb, include_costs=True):
     """
     from report_5_schema import (
         REPORT_5_DISPLAY_GROUPS,
+        REPORT_5_ERROR_PERCENT_RED_THRESHOLD,
+        REPORT_5_SCHOOL_PARENT_GROUPS,
+        REPORT_5_SCHOOL_PARENT_RATIO_RED_THRESHOLD,
         FIELD_TIME,
         FIELD_SOURCE,
         FIELD_ERROR_COUNT,
@@ -1091,6 +1128,14 @@ def configure_report5_grid_columns(gb, include_costs=True):
     )
 
     gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
+    error_alert_style = _build_report5_error_alert_style(
+        REPORT_5_ERROR_PERCENT_RED_THRESHOLD
+    )
+    school_parent_alert_style = _build_report5_school_parent_alert_style(
+        REPORT_5_SCHOOL_PARENT_GROUPS,
+        REPORT_5_SCHOOL_PARENT_RATIO_RED_THRESHOLD,
+        age_ratio_field,
+    )
 
     col_defs = {
         'Thời gian xuất data': {
@@ -1119,6 +1164,7 @@ def configure_report5_grid_columns(gb, include_costs=True):
                     'field': FIELD_ERROR_PERCENT,
                     'width': 165,
                     'valueFormatter': pct_formatter,
+                    'cellStyle': error_alert_style,
                 },
             ],
         },
@@ -1165,11 +1211,18 @@ def configure_report5_grid_columns(gb, include_costs=True):
 
         children = [
             _make_child('SL Data', age_data_field(group), 95, formatter_r5_number),
-            _make_child('Tổng tỉ lệ độ tuổi', age_ratio_field(group), 135, pct_formatter),
+            _make_child(
+                'Tổng tỉ lệ độ tuổi',
+                age_ratio_field(group),
+                135,
+                pct_formatter,
+            ),
             _make_child('Bills', age_bill_field(group), 90, formatter_r5_number),
             _make_child('Tỉ lệ chốt', close_ratio_field(group), 110, pct_formatter),
             _make_child('%Bills', bill_share_field(group), 100, pct_formatter),
         ]
+        if group in REPORT_5_SCHOOL_PARENT_GROUPS:
+            children[1]['cellStyle'] = school_parent_alert_style
 
         col_defs[group] = {
             'headerName': group,
