@@ -1,8 +1,11 @@
-streamlit
+# Lock the UI runtime: Streamlit 1.64 renders multiselect selections as a
+# single horizontally scrollable row in this app's deployment, unlike the
+# tested local UI where selected departments wrap onto multiple lines.
+streamlit==1.58.0
 pandas
 openpyxl
 matplotlib
 python-dotenv
 requests
-streamlit-aggrid
+streamlit-aggrid==1.2.1.post2
 supabase
