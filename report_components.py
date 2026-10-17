@@ -565,8 +565,8 @@ def render_aggrid_report(
 
 def _excel_display_frame(frame):
     """Các cột tử số BC1 chỉ dùng để định dạng, không xuất thành cột riêng."""
-    from report_1_schema import ALL_COLUMNS, DISPLAY_COLUMNS
-    return frame[DISPLAY_COLUMNS] if list(frame.columns) == ALL_COLUMNS else frame
+    from report_1_schema import ALL_COLUMNS, DISPLAY_COLUMNS, KPI_HEADERS
+    return frame[DISPLAY_COLUMNS].rename(columns=KPI_HEADERS) if list(frame.columns) == ALL_COLUMNS else frame
 
 
 def _format_report_1_excel(ws, frame):
@@ -579,7 +579,7 @@ def _format_report_1_excel(ws, frame):
     for cell in ws[1]:
         cell.alignment = Alignment(wrap_text=True, vertical='center')
         ws.column_dimensions[cell.column_letter].width = 25
-    ws.row_dimensions[1].height = 60
+    ws.row_dimensions[1].height = 105
     ws.freeze_panes = 'E2'
     for field, _, _, low, high, direction in KPI_SPECS:
         col = frame.columns.get_loc(field) + 1
@@ -600,7 +600,7 @@ def _format_report_1_excel(ws, frame):
 def get_excel_bytes(df_excel, sheet_name, file_name):
     """Giữ một file gần nhất mỗi báo cáo trong phiên, không chia sẻ dữ liệu giữa người dùng."""
     cache = st.session_state.setdefault('_excel_download_cache', {})
-    key = (sheet_name, file_name)
+    key = (sheet_name, file_name, tuple(_excel_display_frame(df_excel).columns))
     cached = cache.get(key)
     if cached is not None and cached['frame'].equals(df_excel):
         return cached['data']
@@ -726,7 +726,7 @@ def get_excel_bytes_multi_sheets(sheets, file_name):
     sheets: list[(sheet_name, df)]. Format float '0.00' mọi sheet.
     """
     cache = st.session_state.setdefault('_excel_download_cache', {})
-    key = file_name
+    key = (file_name, tuple((name, tuple(_excel_display_frame(df).columns)) for name, df in sheets))
     cached = cache.get(key)
     if cached is not None:
         cached_sheets = cached.get('sheets', [])

@@ -19,6 +19,10 @@ KPI_SPECS = (
     ('Đã cọc chốt', (15, 51, 6), '12% (±2%)', 10, 12, 'higher'),
     ('Data sai số, sai đối tượng, SEC từ chối, TĐTC', (45, 22, 41, 44), '6% (±2%)', 4, 8, 'lower'),
 )
+KPI_HEADERS = {
+    field: f'{field}/ Tổng data chia trừ sai số, sai đối tượng'
+    for field, *_ in KPI_SPECS
+}
 
 
 def count_field(field):

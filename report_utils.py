@@ -15,6 +15,7 @@ from st_aggrid.shared import JsCode
 from report_1_schema import (
     TOTAL_FIELD as R1_TOTAL, BASE_FIELD as R1_BASE,
     KPI_SPECS as R1_KPIS, count_field as r1_count_field,
+    KPI_HEADERS as R1_KPI_HEADERS,
 )
 
 # ==========================================
@@ -801,6 +802,7 @@ def configure_report1_grid_columns(gb):
             .replace('HIGH', str(high)).replace('LOW', str(low)))
         gb.configure_column(
             field, valueGetter=getter, valueFormatter=formatter, cellStyle=style,
+            headerName=R1_KPI_HEADERS[field],
             headerTooltip=f'Mục tiêu: {target}', width=160,
         )
 
