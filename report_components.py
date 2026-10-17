@@ -563,6 +563,40 @@ def render_aggrid_report(
     )
 
 
+def _excel_display_frame(frame):
+    """Các cột tử số BC1 chỉ dùng để định dạng, không xuất thành cột riêng."""
+    from report_1_schema import ALL_COLUMNS, DISPLAY_COLUMNS
+    return frame[DISPLAY_COLUMNS] if list(frame.columns) == ALL_COLUMNS else frame
+
+
+def _format_report_1_excel(ws, frame):
+    """Hiển thị số lượng (tỷ lệ) trong tám cột BC1; tỷ lệ vẫn là số Excel."""
+    from openpyxl.styles import Alignment, PatternFill
+    from report_1_schema import ALL_COLUMNS, KPI_SPECS, count_field, kpi_color
+
+    if list(frame.columns) != ALL_COLUMNS:
+        return
+    for cell in ws[1]:
+        cell.alignment = Alignment(wrap_text=True, vertical='center')
+        ws.column_dimensions[cell.column_letter].width = 25
+    ws.row_dimensions[1].height = 60
+    ws.freeze_panes = 'E2'
+    for field, _, _, low, high, direction in KPI_SPECS:
+        col = frame.columns.get_loc(field) + 1
+        counts = frame[count_field(field)].tolist()
+        for index, row in enumerate(ws.iter_rows(min_row=2, min_col=col, max_col=col)):
+            cell = row[0]
+            count = int(counts[index])
+            if isinstance(cell.value, (int, float)):
+                color = kpi_color(cell.value, low, high, direction)
+                cell.fill = PatternFill(fill_type='solid', fgColor=color)
+                cell.value /= 100
+                cell.number_format = f'"{count} ("0.00%")"'
+            else:
+                cell.value = count
+                cell.number_format = '0" (—)"'
+
+
 def get_excel_bytes(df_excel, sheet_name, file_name):
     """Giữ một file gần nhất mỗi báo cáo trong phiên, không chia sẻ dữ liệu giữa người dùng."""
     cache = st.session_state.setdefault('_excel_download_cache', {})
@@ -572,11 +606,12 @@ def get_excel_bytes(df_excel, sheet_name, file_name):
         return cached['data']
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df_excel.to_excel(writer, sheet_name=sheet_name, index=False)
+        _excel_display_frame(df_excel).to_excel(writer, sheet_name=sheet_name, index=False)
         for row in writer.sheets[sheet_name].iter_rows(min_row=2):
             for cell in row:
                 if isinstance(cell.value, float):
                     cell.number_format = '0.00'
+        _format_report_1_excel(writer.sheets[sheet_name], df_excel)
     data = buffer.getvalue()
     cache[key] = {'frame': df_excel.copy(), 'data': data}
     return data
@@ -704,12 +739,13 @@ def get_excel_bytes_multi_sheets(sheets, file_name):
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         for sheet_name, df_sheet in sheets:
-            df_sheet.to_excel(writer, sheet_name=sheet_name, index=False)
+            _excel_display_frame(df_sheet).to_excel(writer, sheet_name=sheet_name, index=False)
             ws = writer.sheets[sheet_name]
             for row in ws.iter_rows(min_row=2):
                 for cell in row:
                     if isinstance(cell.value, float):
                         cell.number_format = '0.00'
+            _format_report_1_excel(ws, df_sheet)
     data = buffer.getvalue()
     cache[key] = {
         'sheets': [(name, df.copy()) for name, df in sheets],

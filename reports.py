@@ -17,7 +17,7 @@ from st_aggrid.grid_options_builder import GridOptionsBuilder
 
 # Import các phần từ các module con
 from report_utils import (
-    configure_standard_grid_columns,
+    configure_report1_grid_columns,
     configure_report2_grid_columns,
     configure_report3_grid_columns,
     REPORT_3_GRID_CUSTOM_CSS,
@@ -50,6 +50,7 @@ from report_calculations import (
     compute_report_5,
     compute_report_6,
     prepare_excel_report_1,
+    aggregate_report_1_rows,
     prepare_excel_report_2,
     prepare_excel_report_3,
     prepare_excel_report_4,
@@ -79,10 +80,8 @@ from report_6_schema import (
     FIELD_TIME as REPORT_6_FIELD_TIME,
 )
 from manual_input_schema import (
-    REPORT_1_CODE,
     REPORT_2_CODE,
     REPORT_5_CODE,
-    REPORT_1_COL_TO_CODE,
     REPORT_2_COL_TO_CODE,
     get_r2_duplicate_code,
     get_r5_cost_code,
@@ -116,105 +115,30 @@ def render_report_1(
     tvts1_filter_active=False,
     tvts1_department_ids=(),
 ):
-    """Hiển thị Báo cáo 1 bằng bảng phân cấp AgGrid hỗ trợ chỉnh sửa và tính toán động."""
-    if repository is None:
-        repository = get_repository()
-
+    """Hiển thị tám chỉ tiêu CRM theo đợt, phòng ban và cố vấn."""
     st.subheader("Bản xem trước: Báo cáo theo Đợt học thử & Người phụ trách")
-    
-    state_key = "report_1_edited_df"
-    dot_manual_key = "report_1_dot_manual"
-
-    # Báo cáo 1 không còn nhập tay trực tiếp trong AgGrid, nên luôn dùng số liệu mới nhất.
-    df_to_show = result.copy()
-    unique_dots = sorted(df_to_show['ĐỢT HỌC THỬ'].unique().tolist())
-    unique_dots_str = [str(d) for d in unique_dots]
-
-    # ====== TỰ ĐỘNG TẢI DỮ LIỆU TỪ SUPABASE NẾU CHƯA CÓ TRONG PHIÊN ======
-    unloaded_dots = [d for d in unique_dots_str if get_session_entry(REPORT_1_CODE, d)["load_status"] == "unloaded"]
-    if unloaded_dots and repository and repository.is_configured():
-        try:
-            latest_map = repository.load_latest_batch(REPORT_1_CODE, unloaded_dots)
-            for d in unloaded_dots:
-                rec = latest_map.get(d, {})
-                set_loaded_baseline(REPORT_1_CODE, d, rec.get("version_no", 0), rec.get("metric_value", {}))
-        except Exception as e:
-            for d in unloaded_dots:
-                mark_load_error(REPORT_1_CODE, d, str(e))
-            st.warning(f"⚠️ Không thể tải dữ liệu đã lưu từ máy chủ: {e}. Đang sử dụng dữ liệu phiên.")
-
-    # ====== THANH TÁC VỤ (LƯU DỮ LIỆU & TẢI LẠI) ======
-    displayed_codes_by_dot = {
-        d: ["r1_other_deposit", "r1_trial_deposit_total"]
-        for d in unique_dots_str
-    }
-    render_report_actions_bar(REPORT_1_CODE, unique_dots, displayed_codes_by_dot, repository=repository)
-
-    # ====== BẢNG NHẬP TAY CỌC KHÁC & TỔNG CỌC HỌC THỬ THEO ĐỢT ======
-    with manual_input_expander(
-        "✏️ Bảng nhập số liệu thực tế (Cọc khác, Tổng cọc học thử)"
-    ):
-        dot_manual_df, manual_hash = render_dot_manual_inputs(
-            "Số liệu chung theo đợt",
-            dot_manual_key,
-            unique_dots,
-            ['Cọc Khác', 'Tổng Cọc Học Thử'],
-            REPORT_1_COL_TO_CODE,
-            report_code=REPORT_1_CODE,
-        )
-
-
-    # Phân bổ giá trị nhập tay vào dòng đầu tiên mỗi đợt (để aggFunc sum hoạt động đúng ở group footer)
-    df_to_show = assign_dot_manual_to_first_row(
-        df_to_show, dot_manual_df,
-        ['Cọc Khác', 'Tổng Cọc Học Thử']
+    st.caption(
+        "Tổng data đã chia gồm L1–L17 và L1.1, không gồm L0. "
+        "Các tỷ lệ dùng mẫu số sau khi trừ L14, L15. "
+        "Mỗi KPI hiển thị Số lượng (Tỷ lệ%). Mẫu số bằng 0: tỷ lệ hiển thị —; "
+        "Chưa gọi CVHT vẫn đạt nếu không còn L1."
     )
-    st.session_state[state_key] = df_to_show
-    
-    # ====== XÂY DỰNG GRIDOPTIONS CHO AGGRID ======
+    df_to_show = result.copy()
     gb = GridOptionsBuilder.from_dataframe(df_to_show)
-    
-    # Thiết lập nhóm phân cấp
     gb.configure_column("ĐỢT HỌC THỬ", rowGroup=True, hide=True)
     gb.configure_column("Phòng ban", rowGroup=True, hide=True)
     gb.configure_column("Thời gian xuất data", width=140, pinned="left")
     gb.configure_column("Người phụ trách", width=160, pinned="left")
-    
-    # Cấu hình các cột số lượng và tỉ lệ KPI (tái sử dụng từ report_utils)
-    count_cols = [
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 'Data Chưa Trao Đổi + Auto Call',
-        'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-        'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử'
-    ]
-    configure_standard_grid_columns(gb, count_cols)
+    configure_report1_grid_columns(gb)
 
-    # Dòng tổng cố định ở đầu bảng — tổng từ bảng nhập tay theo đợt
     pinned_row = None
     if not df_to_show.empty:
-        total_sai_so = int(df_to_show['Sai Số - Sai Đối Tượng'].sum())
-        total_data = int(df_to_show['Tổng số Data'].sum())
-        total_coc_khac = int(dot_manual_df['Cọc Khác'].sum()) if not dot_manual_df.empty else 0
-        total_tong_coc = int(dot_manual_df['Tổng Cọc Học Thử'].sum()) if not dot_manual_df.empty else 0
-        pinned_row = {
-            'Thời gian xuất data': df_to_show['Thời gian xuất data'].iloc[0],
-            'Người phụ trách': '📊 TỔNG DATA XUẤT RA',
-            'Sai Số - Sai Đối Tượng': total_sai_so,
-            'Tiềm Năng Chưa Gọi': int(df_to_show['Tiềm Năng Chưa Gọi'].sum()),
-            'Data Chưa Trao Đổi + Auto Call': int(df_to_show['Data Chưa Trao Đổi + Auto Call'].sum()),
-            'Data Trao Đổi Được': int(df_to_show['Data Trao Đổi Được'].sum()),
-            'Data Tiềm Năng': int(df_to_show['Data Tiềm Năng'].sum()),
-            'Data Cọc Chốt': int(df_to_show['Data Cọc Chốt'].sum()),
-            'Tổng số Data': total_data,
-            'Tổng số data trừ sai số': total_data - total_sai_so,
-            'Cọc Khác': total_coc_khac,
-            'Tổng Cọc Học Thử': total_tong_coc,
-        }
-
-    # Chú giải các ngưỡng màu KPI trước khi hiển thị bảng.
+        pinned_row = aggregate_report_1_rows(
+            df_to_show, df_to_show['Thời gian xuất data'].iloc[0],
+            advisor_label='📊 TỔNG DATA XUẤT RA',
+        )
     render_report_color_legend(1)
-
-    # Hiển thị AgGrid
-    render_aggrid_report(df_to_show, gb, pinned_row, f"grid_report_1_v3_{manual_hash}")
+    render_aggrid_report(df_to_show, gb, pinned_row, "grid_report_1_v5")
 
     # TVTS 1 là bảng riêng để không bị cộng vào group footer/tổng của Báo cáo 1 chính.
     has_tvts1_data = isinstance(tvts1_result, pd.DataFrame) and not tvts1_result.empty
@@ -226,8 +150,7 @@ def render_report_1(
             st.info("Không có dữ liệu TVTS 1 trong phạm vi phòng ban và đợt học thử đang chọn.")
         else:
             st.caption(
-                "Tổng hợp theo dept_id: " + ", ".join(str(dept_id) for dept_id in tvts1_department_ids) + ". "
-                "Cọc Khác và Tổng Cọc Học Thử không được phân bổ theo phòng ban nên không hiển thị ở bảng này."
+                "Tổng hợp các phòng ban TVTS 1 trong bộ lọc đang chọn."
             )
             tvts1_to_show = tvts1_result.copy()
             gb_tvts1 = GridOptionsBuilder.from_dataframe(tvts1_to_show)
@@ -235,24 +158,12 @@ def render_report_1(
             gb_tvts1.configure_column("ĐỢT HỌC THỬ", width=190, pinned="left")
             gb_tvts1.configure_column("Phòng ban", width=105, pinned="left")
             gb_tvts1.configure_column("Người phụ trách", width=260, pinned="left")
-            configure_standard_grid_columns(gb_tvts1, count_cols)
-            gb_tvts1.configure_column(
-                "% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng",
-                hide=True,
-            )
-            render_aggrid_report(tvts1_to_show, gb_tvts1, None, f"grid_report_1_tvts1_{manual_hash}")
+            configure_report1_grid_columns(gb_tvts1)
+            render_aggrid_report(tvts1_to_show, gb_tvts1, None, "grid_report_1_tvts1_v5")
 
-    # Chuẩn bị dữ liệu Excel hoàn chỉnh và nút download
-    df_excel = prepare_excel_report_1(st.session_state[state_key], dot_manual_df)
+    df_excel = prepare_excel_report_1(df_to_show)
     if has_tvts1_data:
-        tvts1_excel = tvts1_result.drop(
-            columns=[
-                'Cọc Khác',
-                'Tổng Cọc Học Thử',
-                '% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng',
-            ],
-            errors='ignore',
-        )
+        tvts1_excel = tvts1_result.copy()
         render_excel_download_multi_sheets(
             [
                 ('BC_Dot_Nguoi_Phu_Trach', df_excel),

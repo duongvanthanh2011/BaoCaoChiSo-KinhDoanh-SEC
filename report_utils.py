@@ -6,9 +6,16 @@ Chứa:
 - Các hàm cấu hình cột và đồng bộ trạng thái chỉnh sửa dùng chung
 """
 
+import json
+from html import escape
+
 import streamlit as st
 import pandas as pd
 from st_aggrid.shared import JsCode
+from report_1_schema import (
+    TOTAL_FIELD as R1_TOTAL, BASE_FIELD as R1_BASE,
+    KPI_SPECS as R1_KPIS, count_field as r1_count_field,
+)
 
 # ==========================================
 # NHÃN PHÂN LOẠI MỐI QUAN HỆ
@@ -701,15 +708,20 @@ function(params) {
 def render_report_color_legend(report_number):
     """Hiển thị bảng chú giải các ngưỡng màu KPI của Báo cáo 1 hoặc 2."""
     if report_number == 1:
-        rows = """
-            <tr><td>Sai số - Sai đối tượng</td><td><span class="legend-swatch green"></span>&lt; 3%</td><td><span class="legend-swatch yellow"></span>3% đến 7%</td><td><span class="legend-swatch red"></span>&gt; 7%</td></tr>
-            <tr><td>Data tiềm năng chưa gọi</td><td><span class="legend-swatch green"></span>= 0%</td><td>-</td><td><span class="legend-swatch red"></span>&gt; 0%</td></tr>
-            <tr><td>Data chưa trao đổi + Auto Call</td><td colspan="3">Không tô màu</td></tr>
-            <tr><td>Data trao đổi được</td><td><span class="legend-swatch green"></span>&ge; 60%</td><td><span class="legend-swatch yellow"></span>50% đến &lt; 60%</td><td><span class="legend-swatch red"></span>&lt; 50%</td></tr>
-            <tr><td>Data tiềm năng</td><td><span class="legend-swatch green"></span>&ge; 30%</td><td><span class="legend-swatch yellow"></span>25% đến &lt; 30%</td><td><span class="legend-swatch red"></span>&lt; 25%</td></tr>
-            <tr><td>Data cọc chốt</td><td><span class="legend-swatch green"></span>&ge; 15%</td><td><span class="legend-swatch yellow"></span>12% đến &lt; 15%</td><td><span class="legend-swatch red"></span>&lt; 12%</td></tr>
-            <tr><td>Tỷ lệ tổng cọc buổi học thử</td><td><span class="legend-swatch green"></span>&ge; 10%</td><td><span class="legend-swatch yellow"></span>7% đến &lt; 10%</td><td><span class="legend-swatch red"></span>&lt; 7%</td></tr>
-        """
+        legend_rows = []
+        for field, _, target, low, high, direction in R1_KPIS:
+            if direction == 'zero':
+                labels = ('0%', '—', '> 0%')
+            elif direction == 'higher':
+                labels = (f'> {high}%', f'{low}% – {high}%', f'< {low}%')
+            else:
+                labels = (f'< {low}%', f'{low}% – {high}%', f'> {high}%')
+            cells = ''.join(
+                f'<td><span class="legend-swatch {color}"></span>{escape(label)}</td>'
+                for color, label in zip(('green', 'yellow', 'red'), labels)
+            )
+            legend_rows.append(f'<tr><td>{escape(field)} — Mục tiêu: {target}</td>{cells}</tr>')
+        rows = ''.join(legend_rows)
         title = "📝 Ghi chú màu KPI - Báo cáo 1"
     elif report_number == 2:
         rows = """
@@ -742,90 +754,55 @@ def render_report_color_legend(report_number):
         unsafe_allow_html=True,
     )
 
-def configure_standard_grid_columns(gb, count_cols):
-    """
-    Cấu hình các cột số lượng và cột tỷ lệ KPI chuẩn cho GridOptionsBuilder.
-    Tái sử dụng cho cả Báo cáo 1 và Báo cáo 2 để loại bỏ lặp mã nguồn.
-    """
-    # Cấu hình tự động xuống dòng cho header
+def configure_report1_grid_columns(gb):
+    """Tám cột hiển thị; cộng tử/mẫu riêng để tỷ lệ nhóm luôn có trọng số."""
     gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
-
-    # Cọc Khác, Tổng Cọc Học Thử — ẩn khỏi grid, nhập tay ở bảng riêng theo đợt
-    gb.configure_column("Cọc Khác", hide=True, aggFunc="sum", width=100)
-    gb.configure_column("Tổng Cọc Học Thử", hide=True, aggFunc="sum", width=120)
-
-    # Thiết lập hàm tính tổng (sum) cho các cột đếm
-    for c in count_cols:
-        # Nếu cột đếm là cột cần gộp với phần trăm, ta sẽ định nghĩa cụ thể bên dưới
-        if c not in ["Sai Số - Sai Đối Tượng", "Tiềm Năng Chưa Gọi", "Data Chưa Trao Đổi + Auto Call", "Data Trao Đổi Được", "Data Tiềm Năng", "Data Cọc Chốt", "Cọc Khác", "Tổng Cọc Học Thử"]:
-            gb.configure_column(c, aggFunc="sum", width=100 if len(c) < 15 else 115)
-
-    # Cấu hình đặc biệt cho các cột số lượng gộp phần trăm
-    gb.configure_column(
-        "Sai Số - Sai Đối Tượng",
-        headerName="% sai số-sai đối tượng/ Tổng data đã chia",
-        aggFunc="sum",
-        valueFormatter=formatter_merged,
-        cellStyle=style_merged,
-        width=120
-    )
-    gb.configure_column(
-        "Tiềm Năng Chưa Gọi",
-        headerName="% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng",
-        aggFunc="sum",
-        valueFormatter=formatter_merged,
-        cellStyle=style_merged,
-        width=120
-    )
-    gb.configure_column(
-        "Data Chưa Trao Đổi + Auto Call",
-        headerName="% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng",
-        aggFunc="sum",
-        valueFormatter=formatter_merged,
-        # cellStyle=style_merged,
-        width=120
-    )
-    gb.configure_column(
-        "Data Trao Đổi Được",
-        headerName="% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng",
-        aggFunc="sum",
-        valueFormatter=formatter_merged,
-        cellStyle=style_merged,
-        width=120
-    )
-    gb.configure_column(
-        "Data Tiềm Năng",
-        headerName="% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng",
-        aggFunc="sum",
-        valueFormatter=formatter_merged,
-        cellStyle=style_merged,
-        width=120
-    )
-    gb.configure_column(
-        "Data Cọc Chốt",
-        headerName="% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng",
-        aggFunc="sum",
-        valueFormatter=formatter_merged,
-        cellStyle=style_merged,
-        width=120
-    )
-
-    # Ẩn các cột phần trăm cũ trên UI của AgGrid
-    gb.configure_column("% sai số-sai đối tượng/ Tổng data đã chia", hide=True)
-    gb.configure_column("% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
-    gb.configure_column("% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
-    gb.configure_column("% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
-    gb.configure_column("% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
-    gb.configure_column("% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng", hide=True)
-
-    # Hiển thị cột % Tổng cọc buổi học thử (có tô màu KPI)
-    gb.configure_column(
-        "% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng",
-        valueGetter=getter_pct_tong_coc,
-        valueFormatter=pct_formatter,
-        cellStyle=style_pct_tong_coc,
-        width=160
-    )
+    for field in (R1_TOTAL, R1_BASE):
+        gb.configure_column(field, aggFunc='sum', width=150)
+    for field, _, target, low, high, direction in R1_KPIS:
+        numerator = r1_count_field(field)
+        gb.configure_column(numerator, aggFunc='sum', hide=True, suppressColumnsToolPanel=True)
+        getter = JsCode("""
+        function(params) {
+            var node = params.node;
+            var data = node && !node.rowPinned && (node.group || node.footer)
+                ? node.aggData : params.data;
+            if (!data) return null;
+            var count = Number(data[NUMERATOR] || 0);
+            var base = Number(data[BASE] || 0);
+            if (ZERO && count === 0) return 0;
+            return base > 0 ? count / base * 100 : null;
+        }
+        """.replace('NUMERATOR', json.dumps(numerator))
+            .replace('BASE', json.dumps(R1_BASE))
+            .replace('ZERO', json.dumps(direction == 'zero')))
+        formatter = JsCode("""
+        function(params) {
+            var node = params.node;
+            var data = node && !node.rowPinned && (node.group || node.footer)
+                ? node.aggData : params.data;
+            if (!data) return '';
+            var count = Number(data[NUMERATOR] || 0);
+            var pct = Number.isFinite(params.value) ? params.value.toFixed(2) + '%' : '—';
+            return count + ' (' + pct + ')';
+        }
+        """.replace('NUMERATOR', json.dumps(numerator)))
+        style = JsCode("""
+        function(params) {
+            var value = params.value;
+            if (value === null || value === undefined || !Number.isFinite(value)) return {};
+            var color;
+            if (DIRECTION === 'zero') color = value > 0 ? '#ffcccc' : '#ccffcc';
+            else if (DIRECTION === 'higher') color = value > HIGH ? '#ccffcc' : (value >= LOW ? '#fff2cc' : '#ffcccc');
+            else color = value < LOW ? '#ccffcc' : (value <= HIGH ? '#fff2cc' : '#ffcccc');
+            return {backgroundColor: color};
+        }
+        """.replace('DIRECTION', json.dumps(direction))
+            .replace('HIGH', str(high)).replace('LOW', str(low)))
+        gb.configure_column(
+            field, valueGetter=getter, valueFormatter=formatter, cellStyle=style,
+            headerTooltip=f'Mục tiêu: {target}', width=160,
+        )
 
 
 def configure_report2_grid_columns(gb, count_cols=None):

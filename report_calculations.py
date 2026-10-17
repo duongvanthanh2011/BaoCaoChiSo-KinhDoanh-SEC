@@ -75,6 +75,13 @@ from report_6_schema import (
     tc_bill_share_field,
     get_report_6_fields,
 )
+from report_1_schema import (
+    REPORT_1_SCHEMA_VERSION, GROUP_COLUMNS as R1_GROUP_COLUMNS,
+    ALL_COLUMNS as R1_ALL_COLUMNS,
+    TOTAL_FIELD as R1_TOTAL, BASE_FIELD as R1_BASE, ASSIGNED_IDS, INVALID_IDS,
+    KPI_SPECS as R1_KPIS, COUNT_FIELDS as R1_COUNTS,
+    count_field as r1_count_field, calculate_percentages as r1_percentages,
+)
 from time_utils import format_fetch_time
 
 
@@ -139,7 +146,7 @@ def get_cached_base_reports(
     normalized_tvts1_manager_ids = tuple(sorted(normalized_manager_ids))
     key = (
         revision, id(raw_df), sessions, st.session_state.get('fetch_time'),
-        REPORT_4_SCHEMA_VERSION, REPORT_5_SCHEMA_VERSION, REPORT_6_SCHEMA_VERSION,
+        REPORT_1_SCHEMA_VERSION, REPORT_4_SCHEMA_VERSION, REPORT_5_SCHEMA_VERSION, REPORT_6_SCHEMA_VERSION,
         bool(department_filter_active), normalized_tvts1_manager_ids,
     )
     cached = st.session_state.get('_base_reports_cache')
@@ -190,89 +197,21 @@ def add_indicator_columns(df_filtered):
 
 
 def compute_report_1(df_filtered):
-    """
-    Tính toán Báo cáo 1: Theo Đợt học thử & Người phụ trách (dưới dạng flat DataFrame).
-    """
+    """Đếm theo relation_id, giữ nguyên nhóm đợt/phòng ban/cố vấn."""
     if df_filtered.empty:
-        cols = [
-            'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách',
-            'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 'Data Chưa Trao Đổi + Auto Call',
-            'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-            'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử',
-            '% sai số-sai đối tượng/ Tổng data đã chia', 
-            '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng', 
-            '% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng',
-            '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng', 
-            '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng', 
-            '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng',
-            '% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng'
-        ]
-        return pd.DataFrame(columns=cols)
+        return pd.DataFrame(columns=R1_ALL_COLUMNS)
+    if 'relation_id' not in df_filtered.columns:
+        raise ValueError('Dữ liệu thiếu relation_id. Vui lòng tải lại dữ liệu Getfly.')
 
-    fetch_time = st.session_state.get("fetch_time") or format_fetch_time()
-
-    result = (
-        df_filtered
-        .groupby(["ĐỢT HỌC THỬ", "Phòng ban", "Người phụ trách"])
-        .agg(
-            sai_so_sai_doi_tuong=("SAI SỐ - SAI ĐỐI TƯỢNG", "sum"),
-            tiem_nang_chua_goi=("TIỀM NĂNG CHƯA GỌI", "sum"),
-            Data_chua_trao_doi_autocall=("Data_chua_trao_doi_autocall", "sum"),
-            Data_trao_doi_duoc=("Data_trao_doi_duoc", "sum"),
-            Data_tiem_nang=("Data_tiem_nang", "sum"),
-            Data_coc_chot=("Data_coc_chot", "sum"),
-            # "Tổng số Data" là số bản ghi, không phụ thuộc Mã KH có hay không.
-            Count=("SAI SỐ - SAI ĐỐI TƯỢNG", "size"),
-        )
-        .reset_index()
-    )
-
-    result.rename(columns={
-        "sai_so_sai_doi_tuong": "Sai Số - Sai Đối Tượng",
-        "tiem_nang_chua_goi": "Tiềm Năng Chưa Gọi",
-        "Data_chua_trao_doi_autocall": "Data Chưa Trao Đổi + Auto Call",
-        "Data_trao_doi_duoc": "Data Trao Đổi Được",
-        "Data_tiem_nang": "Data Tiềm Năng",
-        "Data_coc_chot": "Data Cọc Chốt",
-        "Count": "Tổng số Data"
-    }, inplace=True)
-
-    result['Thời gian xuất data'] = fetch_time
-    result['Tổng số data trừ sai số'] = result['Tổng số Data'] - result['Sai Số - Sai Đối Tượng']
-    result['Cọc Khác'] = 0
-    result['Tổng Cọc Học Thử'] = 0
-
-    result['% sai số-sai đối tượng/ Tổng data đã chia'] = 0.0
-    result['% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
-    result['% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
-    result['% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
-    result['% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
-    result['% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
-    result['% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng'] = 0.0
-
-    cols_order = [
-        'Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách',
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 'Data Chưa Trao Đổi + Auto Call',
-        'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-        'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử',
-        '% sai số-sai đối tượng/ Tổng data đã chia', 
-        '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng', 
-        '% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng',
-        '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng', 
-        '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng', 
-        '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng',
-        '% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng'
-    ]
-    result = result[cols_order]
-
-    int_cols = [
-        'Sai Số - Sai Đối Tượng', 'Tiềm Năng Chưa Gọi', 'Data Chưa Trao Đổi + Auto Call',
-        'Data Trao Đổi Được', 'Data Tiềm Năng', 'Data Cọc Chốt', 'Tổng số Data',
-        'Tổng số data trừ sai số', 'Cọc Khác', 'Tổng Cọc Học Thử'
-    ]
-    result[int_cols] = result[int_cols].astype(int)
-
-    return result
+    relation_ids = pd.to_numeric(df_filtered['relation_id'], errors='coerce')
+    counts = df_filtered[R1_GROUP_COLUMNS].copy()
+    counts[R1_TOTAL] = relation_ids.isin(ASSIGNED_IDS).astype(int)
+    counts[R1_BASE] = (relation_ids.isin(ASSIGNED_IDS) & ~relation_ids.isin(INVALID_IDS)).astype(int)
+    for field, ids, *_ in R1_KPIS:
+        counts[r1_count_field(field)] = relation_ids.isin(ids).astype(int)
+    result = counts.groupby(R1_GROUP_COLUMNS, dropna=False)[R1_COUNTS].sum().reset_index()
+    result['Thời gian xuất data'] = st.session_state.get('fetch_time') or format_fetch_time()
+    return r1_percentages(result)[R1_ALL_COLUMNS]
 
 
 def expand_weighted_sources(
@@ -384,33 +323,6 @@ def compute_report_2(df_filtered):
 # CÁC HÀM TRỢ GIÚP XUẤT FILE EXCEL CHO PYTHON
 # ==========================================
 
-def compute_excel_percentages(df_excel):
-    """
-    Tính toán tỷ lệ phần trăm động trên DataFrame phục vụ xuất Excel.
-    Tái sử dụng chung để tránh lặp logic toán học.
-    """
-    tot = pd.to_numeric(df_excel['Tổng số Data'], errors='coerce')
-    base = pd.to_numeric(df_excel['Tổng số data trừ sai số'], errors='coerce')
-
-    def safe_percentage(numerator, denominator):
-        """Chỉ tính phần trăm khi mẫu số dương; tránh NaN và +/-inf."""
-        numerator = pd.to_numeric(numerator, errors='coerce')
-        valid_denominator = denominator.where(denominator > 0)
-        return (numerator / valid_denominator * 100).fillna(0.0)
-
-    df_excel['% sai số-sai đối tượng/ Tổng data đã chia'] = safe_percentage(df_excel['Sai Số - Sai Đối Tượng'], tot)
-    df_excel['% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng'] = safe_percentage(df_excel['Tiềm Năng Chưa Gọi'], base)
-    df_excel['% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng'] = safe_percentage(df_excel['Data Chưa Trao Đổi + Auto Call'], base)
-    df_excel['% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng'] = safe_percentage(df_excel['Data Trao Đổi Được'], base)
-    df_excel['% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng'] = safe_percentage(df_excel['Data Tiềm Năng'], base)
-    df_excel['% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng'] = safe_percentage(df_excel['Data Cọc Chốt'], base)
-
-    default_tong_coc = pd.Series(0, index=df_excel.index, dtype=float)
-    tong_coc = pd.to_numeric(df_excel.get('Tổng Cọc Học Thử', default_tong_coc), errors='coerce').fillna(0)
-    df_excel['% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng'] = safe_percentage(tong_coc, base)
-    return df_excel
-
-
 def build_excel_with_subtotals(df, aggregate_fn, pre_process_group_fn=None):
     """
     Xây dựng DataFrame Excel hoàn chỉnh với dòng tổng theo đợt và dòng tổng cộng.
@@ -452,57 +364,16 @@ def build_excel_with_subtotals(df, aggregate_fn, pre_process_group_fn=None):
     return df_result
 
 
-def _aggregate_report_1_row(dot_manual_df=None):
-    """Trả về một hàm aggregate cho Report 1 (closure chứa dot_manual_df)."""
-    def aggregate_fn(group, time_val, dot_label, nguon_label):
-        sub_data = group['Tổng số Data'].sum()
-        sub_sai_so = group['Sai Số - Sai Đối Tượng'].sum()
-        sub_base = sub_data - sub_sai_so
-        sub_tn_chua_goi = group['Tiềm Năng Chưa Gọi'].sum()
-        sub_chua_trao_doi_autocall = group['Data Chưa Trao Đổi + Auto Call'].sum()
-        sub_trao_doi = group['Data Trao Đổi Được'].sum()
-        sub_tiem_nang = group['Data Tiềm Năng'].sum()
-        sub_coc_chot = group['Data Cọc Chốt'].sum()
-
-        # Lấy giá trị nhập tay cho đợt/tổng cộng
-        coc_khac = 0
-        tong_coc_ht = 0
-        # Tên đợt thực tế (bỏ prefix "TỔNG ")
-        real_dot = dot_label.replace('TỔNG ', '') if dot_label.startswith('TỔNG ') else None
-        if dot_manual_df is not None and not dot_manual_df.empty:
-            if dot_label == 'TỔNG CỘNG':
-                coc_khac = int(dot_manual_df['Cọc Khác'].sum())
-                tong_coc_ht = int(dot_manual_df['Tổng Cọc Học Thử'].sum())
-            elif real_dot:
-                m_row = dot_manual_df[dot_manual_df['ĐỢT HỌC THỬ'] == real_dot]
-                if not m_row.empty:
-                    coc_khac = int(m_row['Cọc Khác'].iloc[0])
-                    tong_coc_ht = int(m_row['Tổng Cọc Học Thử'].iloc[0])
-
-        return {
-            'Thời gian xuất data': time_val,
-            'ĐỢT HỌC THỬ': dot_label,
-            'Phòng ban': '',
-            'Người phụ trách': '',
-            'Sai Số - Sai Đối Tượng': sub_sai_so,
-            'Tiềm Năng Chưa Gọi': sub_tn_chua_goi,
-            'Data Chưa Trao Đổi + Auto Call': sub_chua_trao_doi_autocall,
-            'Data Trao Đổi Được': sub_trao_doi,
-            'Data Tiềm Năng': sub_tiem_nang,
-            'Data Cọc Chốt': sub_coc_chot,
-            'Tổng số Data': sub_data,
-            'Tổng số data trừ sai số': sub_base,
-            'Cọc Khác': coc_khac,
-            'Tổng Cọc Học Thử': tong_coc_ht,
-            '% sai số-sai đối tượng/ Tổng data đã chia': (sub_sai_so / sub_data * 100) if sub_data else 0,
-            '% data tiềm năng chưa gọi / Tổng data đã chia trừ sai số-sai đối tượng': (sub_tn_chua_goi / sub_base * 100) if sub_base else 0,
-            '% data Chưa trao đổi được + autocall / Tổng data đã chia trừ sai số-sai đối tượng': (sub_chua_trao_doi_autocall / sub_base * 100) if sub_base else 0,
-            '% data trao đổi được / Tổng data đã chia trừ sai số-sai đối tượng': (sub_trao_doi / sub_base * 100) if sub_base else 0,
-            '% data tiềm năng / Tổng data đã chia trừ sai số-sai đối tượng': (sub_tiem_nang / sub_base * 100) if sub_base else 0,
-            '% data cọc chốt / Tổng data đã chia trừ sai số-sai đối tượng': (sub_coc_chot / sub_base * 100) if sub_base else 0,
-            '% Tổng cọc buổi học thử / Tổng data đã chia trừ sai số-sai đối tượng': (tong_coc_ht / sub_base * 100) if sub_base else 0,
-        }
-    return aggregate_fn
+def aggregate_report_1_rows(group, time_val='', dot_label='', advisor_label=''):
+    """Cộng số lượng trước, tính lại tỷ lệ sau cho mọi cấp tổng hợp."""
+    row = {field: group[field].sum() for field in R1_COUNTS}
+    row.update({
+        'Thời gian xuất data': time_val,
+        'ĐỢT HỌC THỬ': dot_label,
+        'Phòng ban': '',
+        'Người phụ trách': advisor_label,
+    })
+    return r1_percentages(pd.DataFrame([row])).iloc[0].to_dict()
 
 
 def compute_report_1_tvts1(df_filtered, tvts1_manager_ids=(), department_filter_active=False):
@@ -530,30 +401,30 @@ def compute_report_1_tvts1(df_filtered, tvts1_manager_ids=(), department_filter_
         return empty
 
     fetch_time = detail_rows['Thời gian xuất data'].iloc[0] if len(detail_rows) else ''
-    total_row = _aggregate_report_1_row()(detail_rows, fetch_time, 'TỔNG CÁC ĐỢT ĐÃ CHỌN', '')
+    total_row = aggregate_report_1_rows(detail_rows, fetch_time, 'TỔNG CÁC ĐỢT ĐÃ CHỌN', '')
     total_row['Phòng ban'] = 'TVTS 1'
     total_row['Người phụ trách'] = 'Tổng hợp các phòng ban GREEN đã chọn'
     return pd.DataFrame([total_row])[detail_rows.columns]
 
 
-def prepare_excel_report_1(df_edited, dot_manual_df=None):
-    """Tính toán bảng hoàn chỉnh gồm phần trăm, dòng tổng đợt và dòng tổng cộng cho Report 1 (dùng cho download Excel)."""
-    df_excel = df_edited.copy()
-
-    # Xóa giá trị Cọc Khác và Tổng Cọc Học Thử ở cấp người phụ trách
-    # (giá trị này thuộc cấp đợt, sẽ hiển thị ở dòng tổng đợt)
-    df_excel['Cọc Khác'] = 0
-    df_excel['Tổng Cọc Học Thử'] = 0
-
-    df_excel = compute_excel_percentages(df_excel)
-
-    if df_excel.empty:
-        return df_excel
-
-    return build_excel_with_subtotals(
-        df_excel,
-        aggregate_fn=_aggregate_report_1_row(dot_manual_df)
-    )
+def prepare_excel_report_1(df_edited):
+    """Xuất đúng tám chỉ tiêu, tổng theo phòng ban, đợt và toàn bộ dữ liệu."""
+    if df_edited.empty:
+        return df_edited[R1_ALL_COLUMNS].copy()
+    parts = []
+    for dot, dot_rows in df_edited.groupby('ĐỢT HỌC THỬ', sort=False, dropna=False):
+        time_val = dot_rows['Thời gian xuất data'].iloc[0]
+        for department, dept_rows in dot_rows.groupby('Phòng ban', sort=False, dropna=False):
+            parts.append(dept_rows)
+            subtotal = aggregate_report_1_rows(dept_rows, time_val, dot, 'TỔNG PHÒNG BAN')
+            subtotal['Phòng ban'] = department
+            parts.append(pd.DataFrame([subtotal]))
+        parts.append(pd.DataFrame([aggregate_report_1_rows(dot_rows, time_val, f'TỔNG {dot}')]))
+    parts.append(pd.DataFrame([aggregate_report_1_rows(
+        df_edited, df_edited['Thời gian xuất data'].iloc[0], 'TỔNG CỘNG',
+    )]))
+    # Giữ tử số đến bước định dạng Excel để hiển thị số lượng cùng tỷ lệ.
+    return pd.concat(parts, ignore_index=True)[R1_ALL_COLUMNS]
 
 
 def calculate_report_2_average_metrics(df_rows, dot_manual_df=None):
