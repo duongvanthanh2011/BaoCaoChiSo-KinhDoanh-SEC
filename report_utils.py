@@ -15,7 +15,7 @@ from st_aggrid.shared import JsCode
 from report_1_schema import (
     TOTAL_FIELD as R1_TOTAL, BASE_FIELD as R1_BASE,
     KPI_SPECS as R1_KPIS, count_field as r1_count_field,
-    KPI_HEADERS as R1_KPI_HEADERS,
+    KPI_HEADERS as R1_KPI_HEADERS, kpi_denominator as r1_kpi_denominator,
 )
 
 # ==========================================
@@ -762,6 +762,7 @@ def configure_report1_grid_columns(gb):
         gb.configure_column(field, aggFunc='sum', width=150)
     for field, _, target, low, high, direction in R1_KPIS:
         numerator = r1_count_field(field)
+        denominator = r1_kpi_denominator(field)
         gb.configure_column(numerator, aggFunc='sum', hide=True, suppressColumnsToolPanel=True)
         getter = JsCode("""
         function(params) {
@@ -775,7 +776,7 @@ def configure_report1_grid_columns(gb):
             return base > 0 ? count / base * 100 : null;
         }
         """.replace('NUMERATOR', json.dumps(numerator))
-            .replace('BASE', json.dumps(R1_BASE))
+            .replace('BASE', json.dumps(denominator))
             .replace('ZERO', json.dumps(direction == 'zero')))
         formatter = JsCode("""
         function(params) {

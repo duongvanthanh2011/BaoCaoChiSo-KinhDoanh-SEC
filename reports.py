@@ -119,7 +119,7 @@ def render_report_1(
     st.subheader("Bản xem trước: Báo cáo theo Đợt học thử & Người phụ trách")
     st.caption(
         "Tổng data đã chia gồm L1–L17 và L1.1, không gồm L0. "
-        "Các tỷ lệ dùng mẫu số sau khi trừ L14, L15. "
+        "KPI sai số/TĐKTC dùng Tổng data đã chia; các KPI còn lại dùng tổng sau khi trừ L14, L15. "
         "Mỗi KPI hiển thị Số lượng (Tỷ lệ%). Mẫu số bằng 0: tỷ lệ hiển thị —; "
         "Chưa gọi CVHT vẫn đạt nếu không còn L1."
     )
