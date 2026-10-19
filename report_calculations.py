@@ -81,6 +81,7 @@ from report_1_schema import (
     TOTAL_FIELD as R1_TOTAL, BASE_FIELD as R1_BASE, ASSIGNED_IDS, INVALID_IDS,
     KPI_SPECS as R1_KPIS, COUNT_FIELDS as R1_COUNTS,
     count_field as r1_count_field, calculate_percentages as r1_percentages,
+    TRIAL_DEPOSIT_FIELD, TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_DEPOSIT_VISIBLE_FIELD,
 )
 from time_utils import format_fetch_time
 
@@ -211,6 +212,9 @@ def compute_report_1(df_filtered):
         counts[r1_count_field(field)] = relation_ids.isin(ids).astype(int)
     result = counts.groupby(R1_GROUP_COLUMNS, dropna=False)[R1_COUNTS].sum().reset_index()
     result['Thời gian xuất data'] = st.session_state.get('fetch_time') or format_fetch_time()
+    result[TRIAL_DEPOSIT_FIELD] = 0
+    result[TRIAL_DEPOSIT_RATIO_FIELD] = None
+    result[TRIAL_DEPOSIT_VISIBLE_FIELD] = False
     return r1_percentages(result)[R1_ALL_COLUMNS]
 
 
@@ -364,7 +368,13 @@ def build_excel_with_subtotals(df, aggregate_fn, pre_process_group_fn=None):
     return df_result
 
 
-def aggregate_report_1_rows(group, time_val='', dot_label='', advisor_label=''):
+def aggregate_report_1_rows(
+    group,
+    time_val='',
+    dot_label='',
+    advisor_label='',
+    show_trial_deposit=False,
+):
     """Cộng số lượng trước, tính lại tỷ lệ sau cho mọi cấp tổng hợp."""
     row = {field: group[field].sum() for field in R1_COUNTS}
     row.update({
@@ -373,6 +383,19 @@ def aggregate_report_1_rows(group, time_val='', dot_label='', advisor_label=''):
         'Phòng ban': '',
         'Người phụ trách': advisor_label,
     })
+
+    # Cấp hiển thị được caller chỉ định rõ; không suy đoán qua nhãn tiếng Việt.
+    if TRIAL_DEPOSIT_FIELD in group.columns and show_trial_deposit:
+        total_coc = int(pd.to_numeric(group[TRIAL_DEPOSIT_FIELD], errors='coerce').fillna(0).sum())
+        row[TRIAL_DEPOSIT_FIELD] = total_coc
+        base_val = row.get(R1_BASE, 0)
+        row[TRIAL_DEPOSIT_RATIO_FIELD] = total_coc / base_val * 100 if base_val > 0 else None
+        row[TRIAL_DEPOSIT_VISIBLE_FIELD] = True
+    else:
+        row[TRIAL_DEPOSIT_FIELD] = 0
+        row[TRIAL_DEPOSIT_RATIO_FIELD] = None
+        row[TRIAL_DEPOSIT_VISIBLE_FIELD] = False
+
     return r1_percentages(pd.DataFrame([row])).iloc[0].to_dict()
 
 
@@ -408,7 +431,7 @@ def compute_report_1_tvts1(df_filtered, tvts1_manager_ids=(), department_filter_
 
 
 def prepare_excel_report_1(df_edited):
-    """Xuất đúng tám chỉ tiêu, tổng theo phòng ban, đợt và toàn bộ dữ liệu."""
+    """Xuất các chỉ tiêu, tổng theo phòng ban, đợt và toàn bộ dữ liệu."""
     if df_edited.empty:
         return df_edited[R1_ALL_COLUMNS].copy()
     parts = []
@@ -419,9 +442,12 @@ def prepare_excel_report_1(df_edited):
             subtotal = aggregate_report_1_rows(dept_rows, time_val, dot, 'TỔNG PHÒNG BAN')
             subtotal['Phòng ban'] = department
             parts.append(pd.DataFrame([subtotal]))
-        parts.append(pd.DataFrame([aggregate_report_1_rows(dot_rows, time_val, f'TỔNG {dot}')]))
+        parts.append(pd.DataFrame([aggregate_report_1_rows(
+            dot_rows, time_val, f'TỔNG {dot}', show_trial_deposit=True,
+        )]))
     parts.append(pd.DataFrame([aggregate_report_1_rows(
         df_edited, df_edited['Thời gian xuất data'].iloc[0], 'TỔNG CỘNG',
+        show_trial_deposit=True,
     )]))
     # Giữ tử số đến bước định dạng Excel để hiển thị số lượng cùng tỷ lệ.
     return pd.concat(parts, ignore_index=True)[R1_ALL_COLUMNS]

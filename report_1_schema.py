@@ -1,6 +1,6 @@
 """Trạng thái, công thức và ngưỡng KPI dùng riêng cho Báo cáo 1."""
 
-REPORT_1_SCHEMA_VERSION = 4
+REPORT_1_SCHEMA_VERSION = 5
 GROUP_COLUMNS = ['ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách']
 IDENTITY_COLUMNS = ['Thời gian xuất data', *GROUP_COLUMNS]
 TOTAL_FIELD = 'Tổng data đã chia'
@@ -26,6 +26,12 @@ KPI_HEADERS = {
 }
 KPI_HEADERS[ERROR_FIELD] = f'{ERROR_FIELD}/ Tổng data đã chia'
 
+# Cột nhập tay và cột tỷ lệ tổng cọc theo đợt học thử
+TRIAL_DEPOSIT_FIELD = 'Tổng cọc'
+TRIAL_DEPOSIT_RATIO_FIELD = 'Tổng cọc buổi học thử/Tổng data đã chia (trừ sai số, sai đối tượng)'
+TRIAL_DEPOSIT_VISIBLE_FIELD = '_r1_show_trial_deposit'
+KPI_HEADERS[TRIAL_DEPOSIT_RATIO_FIELD] = TRIAL_DEPOSIT_RATIO_FIELD
+
 
 def count_field(field):
     return f'_r1_count_{field}'
@@ -35,8 +41,14 @@ COUNT_FIELDS = [TOTAL_FIELD, BASE_FIELD, *(count_field(s[0]) for s in KPI_SPECS)
 DISPLAY_COLUMNS = [
     *IDENTITY_COLUMNS, TOTAL_FIELD, BASE_FIELD, ERROR_FIELD,
     *(s[0] for s in KPI_SPECS if s[0] != ERROR_FIELD),
+    TRIAL_DEPOSIT_RATIO_FIELD,
 ]
-ALL_COLUMNS = [*DISPLAY_COLUMNS, *(count_field(s[0]) for s in KPI_SPECS)]
+ALL_COLUMNS = [
+    *DISPLAY_COLUMNS,
+    *(count_field(s[0]) for s in KPI_SPECS),
+    TRIAL_DEPOSIT_FIELD,
+    TRIAL_DEPOSIT_VISIBLE_FIELD,
+]
 
 
 def kpi_denominator(field):

@@ -79,9 +79,15 @@ from report_6_schema import (
     REPORT_6_CHANNEL_TOTAL,
     FIELD_TIME as REPORT_6_FIELD_TIME,
 )
+from report_1_schema import (
+    TRIAL_DEPOSIT_FIELD,
+    TRIAL_DEPOSIT_RATIO_FIELD,
+)
 from manual_input_schema import (
+    REPORT_1_CODE,
     REPORT_2_CODE,
     REPORT_5_CODE,
+    REPORT_1_COL_TO_CODE,
     REPORT_2_COL_TO_CODE,
     get_r2_duplicate_code,
     get_r5_cost_code,
@@ -115,7 +121,10 @@ def render_report_1(
     tvts1_filter_active=False,
     tvts1_department_ids=(),
 ):
-    """Hiển thị tám chỉ tiêu CRM theo đợt, phòng ban và cố vấn."""
+    """Hiển thị các chỉ tiêu CRM theo đợt, phòng ban và cố vấn."""
+    if repository is None:
+        repository = get_repository()
+
     st.subheader("Bản xem trước: Báo cáo theo Đợt học thử & Người phụ trách")
     st.caption(
         "Tổng data đã chia gồm L1–L17 và L1.1, không gồm L0. "
@@ -124,6 +133,50 @@ def render_report_1(
         "Chưa gọi CVHT vẫn đạt nếu không còn L1."
     )
     df_to_show = result.copy()
+    unique_dots = sorted(df_to_show['ĐỢT HỌC THỬ'].unique().tolist()) if not df_to_show.empty else []
+    unique_dots_str = [str(d) for d in unique_dots]
+    dot_manual_key = "report_1_dot_manual"
+
+    # ====== TỰ ĐỘNG TẢI DỮ LIỆU TỪ SUPABASE NẾU CHƯA CÓ TRONG PHIÊN ======
+    unloaded_dots = [d for d in unique_dots_str if get_session_entry(REPORT_1_CODE, d)["load_status"] == "unloaded"]
+    if unloaded_dots and repository and repository.is_configured():
+        try:
+            latest_map = repository.load_latest_batch(REPORT_1_CODE, unloaded_dots)
+            for d in unloaded_dots:
+                rec = latest_map.get(d, {})
+                set_loaded_baseline(REPORT_1_CODE, d, rec.get("version_no", 0), rec.get("metric_value", {}))
+        except Exception as e:
+            for d in unloaded_dots:
+                mark_load_error(REPORT_1_CODE, d, str(e))
+            st.warning(f"⚠️ Không thể tải dữ liệu đã lưu từ máy chủ: {e}. Đang sử dụng dữ liệu phiên.")
+
+    # ====== THANH TÁC VỤ (LƯU DỮ LIỆU & TẢI LẠI) ======
+    displayed_codes_by_dot = {
+        d: ["r1_trial_deposit_total"]
+        for d in unique_dots_str
+    }
+    render_report_actions_bar(REPORT_1_CODE, unique_dots, displayed_codes_by_dot, repository=repository)
+
+    # ====== BẢNG NHẬP LIỆU TỔNG CỌC THEO ĐỢT ======
+    with manual_input_expander("✏️ Bảng nhập số liệu thực tế (Tổng cọc)"):
+        st.caption("Tổng cọc được lưu theo từng đợt học thử và dùng chung khi thay đổi bộ lọc.")
+        dot_manual_cols = [TRIAL_DEPOSIT_FIELD]
+        dot_manual_df, manual_hash = render_dot_manual_inputs(
+            "Số liệu theo đợt",
+            dot_manual_key,
+            unique_dots,
+            dot_manual_cols,
+            REPORT_1_COL_TO_CODE,
+            display_labels={TRIAL_DEPOSIT_FIELD: TRIAL_DEPOSIT_FIELD},
+            report_code=REPORT_1_CODE,
+        )
+
+    # Phân bổ giá trị nhập tay vào dòng đầu tiên mỗi đợt (để aggFunc sum hoạt động đúng ở group footer)
+    df_to_show = assign_dot_manual_to_first_row(
+        df_to_show, dot_manual_df,
+        [TRIAL_DEPOSIT_FIELD]
+    )
+
     gb = GridOptionsBuilder.from_dataframe(df_to_show)
     gb.configure_column("ĐỢT HỌC THỬ", rowGroup=True, hide=True)
     gb.configure_column("Phòng ban", rowGroup=True, hide=True)
@@ -136,9 +189,10 @@ def render_report_1(
         pinned_row = aggregate_report_1_rows(
             df_to_show, df_to_show['Thời gian xuất data'].iloc[0],
             advisor_label='📊 TỔNG DATA XUẤT RA',
+            show_trial_deposit=True,
         )
     render_report_color_legend(1)
-    render_aggrid_report(df_to_show, gb, pinned_row, "grid_report_1_v5")
+    render_aggrid_report(df_to_show, gb, pinned_row, f"grid_report_1_v6_{manual_hash}")
 
     # TVTS 1 là bảng riêng để không bị cộng vào group footer/tổng của Báo cáo 1 chính.
     has_tvts1_data = isinstance(tvts1_result, pd.DataFrame) and not tvts1_result.empty
@@ -159,10 +213,13 @@ def render_report_1(
             gb_tvts1.configure_column("Phòng ban", width=105, pinned="left")
             gb_tvts1.configure_column("Người phụ trách", width=260, pinned="left")
             configure_report1_grid_columns(gb_tvts1)
-            render_aggrid_report(tvts1_to_show, gb_tvts1, None, "grid_report_1_tvts1_v5")
+            gb_tvts1.configure_column(TRIAL_DEPOSIT_RATIO_FIELD, hide=True)
+            render_aggrid_report(tvts1_to_show, gb_tvts1, None, f"grid_report_1_tvts1_v6_{manual_hash}")
 
     df_excel = prepare_excel_report_1(df_to_show)
     if has_tvts1_data:
+        # Giữ đủ schema để bộ xuất Excel loại các cột kỹ thuật đúng cách.
+        # Tỷ lệ Tổng cọc của TVTS 1 để trống vì số nhập thuộc toàn bộ đợt.
         tvts1_excel = tvts1_result.copy()
         render_excel_download_multi_sheets(
             [

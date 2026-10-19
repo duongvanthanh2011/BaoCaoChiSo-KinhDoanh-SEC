@@ -20,21 +20,16 @@ REPORT_2_ADVISOR_COLUMN = "Số CVHT đi làm"
 # ==========================================
 REPORT_1_INPUT_SPECS = [
     {
-        "code": "r1_other_deposit",
-        "column": "Cọc Khác",
-        "label": "Cọc Khác",
-        "default": 0,
-    },
-    {
         "code": "r1_trial_deposit_total",
-        "column": "Tổng Cọc Học Thử",
-        "label": "Tổng Cọc Học Thử",
+        "column": "Tổng cọc",
+        "label": "Tổng cọc",
         "default": 0,
     },
 ]
 
 REPORT_1_CODE_MAP = {spec["code"]: spec for spec in REPORT_1_INPUT_SPECS}
 REPORT_1_COL_TO_CODE = {spec["column"]: spec["code"] for spec in REPORT_1_INPUT_SPECS}
+REPORT_1_COL_TO_CODE["Tổng Cọc Học Thử"] = "r1_trial_deposit_total"
 
 
 # ==========================================

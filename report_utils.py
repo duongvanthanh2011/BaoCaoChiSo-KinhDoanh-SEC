@@ -16,6 +16,7 @@ from report_1_schema import (
     TOTAL_FIELD as R1_TOTAL, BASE_FIELD as R1_BASE,
     KPI_SPECS as R1_KPIS, count_field as r1_count_field,
     KPI_HEADERS as R1_KPI_HEADERS, kpi_denominator as r1_kpi_denominator,
+    TRIAL_DEPOSIT_FIELD, TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_DEPOSIT_VISIBLE_FIELD,
 )
 
 # ==========================================
@@ -233,35 +234,6 @@ function(params) {
     }
     var base = total - saiSo;
     return base > 0 ? (val / base * 100) : 0;
-}
-""")
-
-getter_pct_tong_coc = JsCode("""
-function(params) {
-    var val = 0, total = 0, saiSo = 0;
-    if (params.node && params.node.rowPinned) {
-        val = params.data ? (params.data['Tổng Cọc Học Thử'] || 0) : 0;
-        total = params.data ? (params.data['Tổng số Data'] || 0) : 0;
-        saiSo = params.data ? (params.data['Sai Số - Sai Đối Tượng'] || 0) : 0;
-    } else if (params.node && (params.node.group || params.node.footer) && params.node.level === 0) {
-        val = params.node.aggData ? (params.node.aggData['Tổng Cọc Học Thử'] || 0) : 0;
-        total = params.node.aggData ? (params.node.aggData['Tổng số Data'] || 0) : 0;
-        saiSo = params.node.aggData ? (params.node.aggData['Sai Số - Sai Đối Tượng'] || 0) : 0;
-    } else {
-        return null;
-    }
-    var base = total - saiSo;
-    return base > 0 ? (val / base * 100) : 0;
-}
-""")
-
-style_pct_tong_coc = JsCode("""
-function(params){
-    var val = params.value;
-    if (val === undefined || val === null) return {};
-    if (val >= 10) return {'backgroundColor':'#ccffcc'};
-    if (val >= 7) return {'backgroundColor':'#fff2cc'};
-    return {'backgroundColor':'#ffcccc'};
 }
 """)
 
@@ -756,7 +728,7 @@ def render_report_color_legend(report_number):
     )
 
 def configure_report1_grid_columns(gb):
-    """Tám cột hiển thị; cộng tử/mẫu riêng để tỷ lệ nhóm luôn có trọng số."""
+    """Cấu hình các cột hiển thị cho Báo cáo 1."""
     gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
     for field in (R1_TOTAL, R1_BASE):
         gb.configure_column(field, aggFunc='sum', width=150)
@@ -806,6 +778,52 @@ def configure_report1_grid_columns(gb):
             headerName=R1_KPI_HEADERS[field],
             headerTooltip=f'Mục tiêu: {target}', width=160,
         )
+
+    # Cột nhập tay Tổng cọc (ẩn khỏi bảng, chỉ dùng để tổng hợp)
+    gb.configure_column(TRIAL_DEPOSIT_FIELD, aggFunc="sum", hide=True, suppressColumnsToolPanel=True)
+    gb.configure_column(TRIAL_DEPOSIT_VISIBLE_FIELD, hide=True, suppressColumnsToolPanel=True)
+
+    # Cột mới: Tổng cọc buổi học thử/Tổng data đã chia (trừ sai số, sai đối tượng)
+    getter_tong_coc = JsCode("""
+    function(params) {
+        var node = params.node;
+        if (!node) return null;
+        var isTotal = Boolean(node.rowPinned);
+        var isDotGroup = Boolean((node.group || node.footer) && node.level === 0);
+        if (!isTotal && !isDotGroup) return null;
+
+        var data = !node.rowPinned && (node.group || node.footer) ? node.aggData : params.data;
+        if (!data) return null;
+        var count = Number(data[TRIAL_DEPOSIT_COL] || 0);
+        var base = Number(data[BASE_COL] || 0);
+        return base > 0 ? (count / base * 100) : null;
+    }
+    """.replace('TRIAL_DEPOSIT_COL', json.dumps(TRIAL_DEPOSIT_FIELD))
+        .replace('BASE_COL', json.dumps(R1_BASE)))
+
+    formatter_tong_coc = JsCode("""
+    function(params) {
+        var node = params.node;
+        if (!node) return '';
+        var isTotal = Boolean(node.rowPinned);
+        var isDotGroup = Boolean((node.group || node.footer) && node.level === 0);
+        if (!isTotal && !isDotGroup) return '';
+
+        var data = !node.rowPinned && (node.group || node.footer) ? node.aggData : params.data;
+        if (!data) return '';
+        var count = Number(data[TRIAL_DEPOSIT_COL] || 0);
+        var pct = Number.isFinite(params.value) ? params.value.toFixed(2) + '%' : '—';
+        return count + ' (' + pct + ')';
+    }
+    """.replace('TRIAL_DEPOSIT_COL', json.dumps(TRIAL_DEPOSIT_FIELD)))
+
+    gb.configure_column(
+        TRIAL_DEPOSIT_RATIO_FIELD,
+        valueGetter=getter_tong_coc,
+        valueFormatter=formatter_tong_coc,
+        headerName=TRIAL_DEPOSIT_RATIO_FIELD,
+        width=175,
+    )
 
 
 def configure_report2_grid_columns(gb, count_cols=None):
