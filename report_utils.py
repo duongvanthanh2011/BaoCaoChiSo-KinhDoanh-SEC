@@ -17,6 +17,8 @@ from report_1_schema import (
     KPI_SPECS as R1_KPIS, count_field as r1_count_field,
     KPI_HEADERS as R1_KPI_HEADERS, kpi_denominator as r1_kpi_denominator,
     TRIAL_DEPOSIT_FIELD, TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_DEPOSIT_VISIBLE_FIELD,
+    TRIAL_DEPOSIT_COLOR_SPEC, KPI_COLOR_HEX,
+    kpi_color_labels, kpi_color_tooltip,
 )
 
 # ==========================================
@@ -682,18 +684,20 @@ def render_report_color_legend(report_number):
     """Hiển thị bảng chú giải các ngưỡng màu KPI của Báo cáo 1 hoặc 2."""
     if report_number == 1:
         legend_rows = []
-        for field, _, target, low, high, direction in R1_KPIS:
-            if direction == 'zero':
-                labels = ('0%', '—', '> 0%')
-            elif direction == 'higher':
-                labels = (f'> {high}%', f'{low}% – {high}%', f'< {low}%')
-            else:
-                labels = (f'< {low}%', f'{low}% – {high}%', f'> {high}%')
+        legend_specs = [
+            (field, target, low, high, direction)
+            for field, _, target, low, high, direction in R1_KPIS
+        ]
+        legend_specs.append((TRIAL_DEPOSIT_RATIO_FIELD, *TRIAL_DEPOSIT_COLOR_SPEC))
+        for field, target, low, high, direction in legend_specs:
+            labels = kpi_color_labels(low, high, direction)
             cells = ''.join(
                 f'<td><span class="legend-swatch {color}"></span>{escape(label)}</td>'
                 for color, label in zip(('green', 'yellow', 'red'), labels)
             )
-            legend_rows.append(f'<tr><td>{escape(field)} — Mục tiêu: {target}</td>{cells}</tr>')
+            legend_rows.append(
+                f'<tr><td>{escape(field)} — Mục tiêu: {escape(str(target))}</td>{cells}</tr>'
+            )
         rows = ''.join(legend_rows)
         title = "📝 Ghi chú màu KPI - Báo cáo 1"
     elif report_number == 2:
@@ -726,6 +730,27 @@ def render_report_color_legend(report_number):
         """,
         unsafe_allow_html=True,
     )
+
+
+def _report_1_color_style(low, high, direction):
+    """Sinh cellStyle AgGrid từ cùng color spec mà Python/Excel sử dụng."""
+    return JsCode("""
+    function(params) {
+        var value = params.value;
+        if (value === null || value === undefined || !Number.isFinite(value)) return {};
+        var color;
+        if (__DIRECTION__ === 'zero') color = value > 0 ? __RED__ : __GREEN__;
+        else if (__DIRECTION__ === 'higher') color = value > __HIGH__ ? __GREEN__ : (value >= __LOW__ ? __YELLOW__ : __RED__);
+        else color = value < __LOW__ ? __GREEN__ : (value <= __HIGH__ ? __YELLOW__ : __RED__);
+        return {backgroundColor: color};
+    }
+    """.replace('__DIRECTION__', json.dumps(direction))
+        .replace('__LOW__', str(low))
+        .replace('__HIGH__', str(high))
+        .replace('__GREEN__', json.dumps(f"#{KPI_COLOR_HEX['green']}"))
+        .replace('__YELLOW__', json.dumps(f"#{KPI_COLOR_HEX['yellow']}"))
+        .replace('__RED__', json.dumps(f"#{KPI_COLOR_HEX['red']}")))
+
 
 def configure_report1_grid_columns(gb):
     """Cấu hình các cột hiển thị cho Báo cáo 1."""
@@ -761,22 +786,11 @@ def configure_report1_grid_columns(gb):
             return count + ' (' + pct + ')';
         }
         """.replace('NUMERATOR', json.dumps(numerator)))
-        style = JsCode("""
-        function(params) {
-            var value = params.value;
-            if (value === null || value === undefined || !Number.isFinite(value)) return {};
-            var color;
-            if (DIRECTION === 'zero') color = value > 0 ? '#ffcccc' : '#ccffcc';
-            else if (DIRECTION === 'higher') color = value > HIGH ? '#ccffcc' : (value >= LOW ? '#fff2cc' : '#ffcccc');
-            else color = value < LOW ? '#ccffcc' : (value <= HIGH ? '#fff2cc' : '#ffcccc');
-            return {backgroundColor: color};
-        }
-        """.replace('DIRECTION', json.dumps(direction))
-            .replace('HIGH', str(high)).replace('LOW', str(low)))
+        style = _report_1_color_style(low, high, direction)
         gb.configure_column(
             field, valueGetter=getter, valueFormatter=formatter, cellStyle=style,
             headerName=R1_KPI_HEADERS[field],
-            headerTooltip=f'Mục tiêu: {target}', width=160,
+            headerTooltip=kpi_color_tooltip(target, low, high, direction), width=160,
         )
 
     # Cột nhập tay Tổng cọc (ẩn khỏi bảng, chỉ dùng để tổng hợp)
@@ -817,11 +831,18 @@ def configure_report1_grid_columns(gb):
     }
     """.replace('TRIAL_DEPOSIT_COL', json.dumps(TRIAL_DEPOSIT_FIELD)))
 
+    deposit_target, deposit_low, deposit_high, deposit_direction = TRIAL_DEPOSIT_COLOR_SPEC
+    style_tong_coc = _report_1_color_style(deposit_low, deposit_high, deposit_direction)
+
     gb.configure_column(
         TRIAL_DEPOSIT_RATIO_FIELD,
         valueGetter=getter_tong_coc,
         valueFormatter=formatter_tong_coc,
+        cellStyle=style_tong_coc,
         headerName=TRIAL_DEPOSIT_RATIO_FIELD,
+        headerTooltip=kpi_color_tooltip(
+            deposit_target, deposit_low, deposit_high, deposit_direction,
+        ),
         width=175,
     )
 

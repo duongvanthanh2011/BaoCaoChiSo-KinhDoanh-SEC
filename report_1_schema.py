@@ -30,7 +30,14 @@ KPI_HEADERS[ERROR_FIELD] = f'{ERROR_FIELD}/ Tổng data đã chia'
 TRIAL_DEPOSIT_FIELD = 'Tổng cọc'
 TRIAL_DEPOSIT_RATIO_FIELD = 'Tổng cọc buổi học thử/Tổng data đã chia (trừ sai số, sai đối tượng)'
 TRIAL_DEPOSIT_VISIBLE_FIELD = '_r1_show_trial_deposit'
+TRIAL_DEPOSIT_COLOR_SPEC = ('>18%', 16, 18, 'higher')
 KPI_HEADERS[TRIAL_DEPOSIT_RATIO_FIELD] = TRIAL_DEPOSIT_RATIO_FIELD
+
+KPI_COLOR_HEX = {
+    'green': 'ccffcc',
+    'yellow': 'fff2cc',
+    'red': 'ffcccc',
+}
 
 
 def count_field(field):
@@ -58,10 +65,32 @@ def kpi_denominator(field):
 
 def kpi_color(value, low, high, direction):
     if direction == 'zero':
-        return 'ffcccc' if value > 0 else 'ccffcc'
+        return KPI_COLOR_HEX['red'] if value > 0 else KPI_COLOR_HEX['green']
     if direction == 'higher':
-        return 'ccffcc' if value > high else ('fff2cc' if value >= low else 'ffcccc')
-    return 'ccffcc' if value < low else ('fff2cc' if value <= high else 'ffcccc')
+        return (
+            KPI_COLOR_HEX['green'] if value > high
+            else KPI_COLOR_HEX['yellow'] if value >= low
+            else KPI_COLOR_HEX['red']
+        )
+    return (
+        KPI_COLOR_HEX['green'] if value < low
+        else KPI_COLOR_HEX['yellow'] if value <= high
+        else KPI_COLOR_HEX['red']
+    )
+
+
+def kpi_color_labels(low, high, direction):
+    """Nhãn Xanh/Vàng/Đỏ tương ứng với cùng quy tắc dùng để tô ô."""
+    if direction == 'zero':
+        return ('0%', '—', '> 0%')
+    if direction == 'higher':
+        return (f'> {high}%', f'{low}% – {high}%', f'< {low}%')
+    return (f'< {low}%', f'{low}% – {high}%', f'> {high}%')
+
+
+def kpi_color_tooltip(target, low, high, direction):
+    green, yellow, red = kpi_color_labels(low, high, direction)
+    return f'Mục tiêu: {target}; Xanh: {green}; Vàng: {yellow}; Đỏ: {red}'
 
 
 def calculate_percentages(frame):
