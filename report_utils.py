@@ -428,20 +428,20 @@ class CellRenderer {
         this.eGui = document.createElement('span');
         var field = params.colDef.field;
         var value = params.value;
-        var totalBills = 0;
+        var totalData = 0;
         if (params.node && params.node.rowPinned) {
             value = (value === undefined || value === null) ? (params.data ? params.data[field] : 0) : value;
-            totalBills = params.data ? (params.data['TỔNG (Cọc Chốt)'] || 0) : 0;
+            totalData = params.data ? (params.data['TỔNG'] || 0) : 0;
         } else if (params.node && (params.node.group || params.node.footer) && params.node.aggData) {
             value = (value === undefined || value === null) ? (params.node.aggData[field] || 0) : value;
-            totalBills = params.node.aggData['TỔNG (Cọc Chốt)'] || 0;
+            totalData = params.node.aggData['TỔNG'] || 0;
         } else {
             value = (value === undefined || value === null) ? (params.data ? params.data[field] : 0) : value;
-            totalBills = params.data ? (params.data['TỔNG (Cọc Chốt)'] || 0) : 0;
+            totalData = params.data ? (params.data['TỔNG'] || 0) : 0;
         }
         var number = Number(value) || 0;
         var numberText = number % 1 === 0 ? number.toString() : number.toFixed(2);
-        var percent = totalBills > 0 ? number / totalBills * 100 : 0;
+        var percent = totalData > 0 ? number / totalData * 100 : 0;
         this.eGui.innerHTML = numberText + ' (' + percent.toFixed(2) + '%)';
     }
     getGui() { return this.eGui; }
@@ -908,19 +908,23 @@ def configure_report2_grid_columns(gb, count_cols=None):
 def configure_report3_grid_columns(gb):
     """
     Cấu hình các cột cho Báo cáo 3: Ma trận Nguồn × Nhóm tuổi.
-    Mỗi nhóm tuổi gồm Data (% Data), Bills (% Bills), Tỷ lệ chốt và Bills/Tổng Data.
+    Mỗi nhóm tuổi gồm Data, Bills, Tỷ lệ chốt và Bills/Tổng Data.
     """
     # Cấu hình tự động xuống dòng cho header
     gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
 
     from data_processing import (
-        AGE_GROUPS,
+        REPORT_3_AGE_GROUPS,
         REPORT_3_SCHOOL_WORKER_COLUMN,
         REPORT_3_STUDENT_YOUNG_COLUMN,
         REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
     )
 
     col_defs = {
+        'ĐỢT HỌC THỬ': {
+            'headerName': 'ĐỢT HỌC THỬ', 'field': 'ĐỢT HỌC THỬ',
+            'rowGroup': True, 'hide': True,
+        },
         'Thời gian xuất data': {
             'headerName': 'Thời gian xuất data', 'field': 'Thời gian xuất data',
             'width': 140, 'pinned': 'left',
@@ -929,7 +933,7 @@ def configure_report3_grid_columns(gb):
             'headerName': 'Nguồn', 'field': 'Nguồn', 'width': 200, 'pinned': 'left',
         },
     }
-    groups = AGE_GROUPS + ['TỔNG'] + [
+    groups = REPORT_3_AGE_GROUPS + ['TỔNG'] + [
         REPORT_3_STUDENT_YOUNG_COLUMN,
         REPORT_3_SCHOOL_WORKER_COLUMN,
         REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
@@ -965,11 +969,11 @@ def configure_report3_grid_columns(gb):
 
         children = [
             data_child,
-            child('Bills (Bills / Tổng Bills)', bills_field, 130, aggFunc='sum', cellRenderer=formatter_r3_bills),
+            child('Bills (Bills / Tổng Data)', bills_field, 145, aggFunc='sum', cellRenderer=formatter_r3_bills),
             child('Tỷ lệ chốt (Bills / Data)', f'{group}::close_rate', 110,
                   valueGetter=getter_r3_close_rate, valueFormatter=pct_formatter,
                   dataField=group, billsField=bills_field),
-            child('Tỷ lệ Bills (Bills / Tổng Data)', f'{group}::bills_over_total_data', 135,
+            child('Bills / Tổng Data', f'{group}::bills_over_total_data', 135,
                   valueGetter=getter_r3_bills_over_total_data, valueFormatter=pct_formatter,
                   billsField=bills_field),
         ]

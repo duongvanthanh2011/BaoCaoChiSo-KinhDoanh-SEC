@@ -417,7 +417,7 @@ def render_report_3(result_3):
     # Xây dựng GridOptions cho AgGrid
     gb = GridOptionsBuilder.from_dataframe(df_to_show)
 
-    # Thiết lập nhóm phân cấp: ĐỢT HỌC THỬ ẩn (làm row group), Nguồn hiển thị
+    # Thiết lập cây: mỗi đợt học thử là một nhánh, các Nguồn là dòng con.
     gb.configure_column("ĐỢT HỌC THỬ", rowGroup=True, hide=True)
     gb.configure_column("Thời gian xuất data", width=140, pinned="left")
     gb.configure_column("Nguồn", width=200, pinned="left")
@@ -445,9 +445,9 @@ def render_report_3(result_3):
         ">
             <b>📝 Ghi chú cách đọc các nhóm cột:</b><br>
             &bull; <b>Data (Data / Tổng Data)</b> — tổng trọng số data của nhóm tuổi và tỷ trọng trên <i>TỔNG data</i> của cùng dòng.<br>
-            &bull; <b>Bills (Bills / Tổng Bills)</b> — data có Mối quan hệ <code>ĐÃ CỌC</code>, <code>ĐÃ CHỐT FULL</code> hoặc <code>ĐÃ CHỐT - TIỀM NĂNG UPSALE</code>, cùng tỷ trọng trên <i>TỔNG Bills</i> của dòng.<br>
+            &bull; <b>Bills (Bills / Tổng Data)</b> — tổng L8 + L9 + L10 theo đúng tập trạng thái <b>Đã cọc chốt</b> của Báo cáo 1, cùng tỷ lệ trên <i>TỔNG data</i> của dòng.<br>
             &bull; <b>Tỷ lệ chốt (Bills / Data)</b>. Ví dụ: 3 Bills / 78 Data = 3,85%.<br>
-            &bull; <b>Tỷ lệ Bills (Bills / Tổng Data)</b>. Ví dụ: 3 Bills / 675 Data = 0,44%.<br>
+            &bull; <b>Bills / Tổng Data</b> — tỷ lệ Bills của nhóm tuổi trên toàn bộ data của cùng dòng.<br>
             &bull; Các tỷ lệ ở dòng tổng theo đợt và <b>📊 TỔNG CỘNG</b> luôn tính lại từ tổng Bills và tổng Data, không cộng hoặc lấy trung bình các tỷ lệ.
         </div>
         """,
@@ -459,7 +459,7 @@ def render_report_3(result_3):
         df_to_show,
         gb,
         pinned_row,
-        "grid_report_3_v6",
+        "grid_report_3_v7",
         custom_css=REPORT_3_GRID_CUSTOM_CSS,
     )
 

@@ -262,10 +262,22 @@ AGE_GROUPS = [
     "Chưa điền",
 ]
 
-REPORT_3_STUDENT_YOUNG_COLUMN = "Nhóm SV + Người đi làm dưới 35 Tuổi"
+REPORT_3_PARENT_COLUMN = "Phụ huynh có con C2, C3"
+REPORT_3_WORKER_22_35_COLUMN = "Người đi làm từ 22 - 35 tuổi"
+REPORT_3_AGE_GROUPS = [
+    "Học sinh cấp 2",
+    "Học sinh cấp 3",
+    "Sinh Viên",
+    REPORT_3_PARENT_COLUMN,
+    REPORT_3_WORKER_22_35_COLUMN,
+    "Người đi làm từ 35 - 50 Tuổi",
+    "Độ tuổi khác",
+    "Chưa điền",
+]
+REPORT_3_STUDENT_YOUNG_COLUMN = "Nhóm SV + Người đi làm từ 22 - 35 tuổi"
 REPORT_3_SCHOOL_WORKER_COLUMN = "HS C2 + C3 + Người đi làm từ 35 - 50 Tuổi"
 REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN = (
-    "SV + Người đi làm dưới 35 tuổi + Chưa điền"
+    "SV + Người đi làm từ 22 - 35 tuổi + Chưa điền"
 )
 REPORT_3_CONSOLIDATED_COLUMNS = [
     REPORT_3_STUDENT_YOUNG_COLUMN,
@@ -277,6 +289,12 @@ REPORT_3_CONSOLIDATED_COLUMNS = [
 _AGE_GROUP_LOOKUP = {g.lower(): g for g in AGE_GROUPS}
 _UNFILLED_AGE_ALIASES = {
     "sale chưa điền & điền trùng",
+}
+_REPORT_3_AGE_ALIASES = {
+    REPORT_3_PARENT_COLUMN.lower(): REPORT_3_PARENT_COLUMN,
+    REPORT_3_WORKER_22_35_COLUMN.lower(): REPORT_3_WORKER_22_35_COLUMN,
+    "người đi làm dưới 35 tuổi": REPORT_3_WORKER_22_35_COLUMN,
+    "người đi làm từ dưới 35 tuổi": REPORT_3_WORKER_22_35_COLUMN,
 }
 
 def classify_age_group(description):
@@ -294,6 +312,15 @@ def classify_age_group(description):
     if canonical:
         return canonical
     return "Độ tuổi khác"
+
+
+def classify_report_3_age_group(description):
+    """BC3 gộp các nhãn dưới 35 vào nhóm 22–35; giữ nguyên nhóm 35–50."""
+    if isinstance(description, str):
+        normalized = description.strip().lower()
+        if normalized in _REPORT_3_AGE_ALIASES:
+            return _REPORT_3_AGE_ALIASES[normalized]
+    return classify_age_group(description)
 
 # ==========================================
 # PHÂN LOẠI NGUỒN VỚI PRIORITY RULES

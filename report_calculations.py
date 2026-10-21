@@ -20,7 +20,7 @@ from report_utils import (
     CHUA_TRAO_DOI_AUTO_CALL_LABELS,
 )
 from data_processing import (
-    AGE_GROUPS,
+    REPORT_3_AGE_GROUPS,
     REPORT_3_CONSOLIDATED_COLUMNS,
     REPORT_3_SCHOOL_WORKER_COLUMN,
     REPORT_3_STUDENT_YOUNG_COLUMN,
@@ -30,6 +30,7 @@ from data_processing import (
     REPORT_4_SCHEMA_VERSION,
     REPORT_4_OFF_ROWS,
     classify_age_group,
+    classify_report_3_age_group,
     expand_report_3_sources_with_weights,
     expand_report_4_sources_with_weights,
     expand_report_5_sources_with_weights,
@@ -88,6 +89,8 @@ from time_utils import format_fetch_time
 
 REPORT_2_ADVISOR_COLUMN = 'Số CVHT đi làm'
 REPORT_2_AVERAGE_COLUMN = 'Data trung bình/ngày/CVHT'
+REPORT_3_SCHEMA_VERSION = 4
+REPORT_3_BILL_RELATION_IDS = (15, 51, 6)  # L8 + L9 + L10
 COC_COL_SUFFIX = " (Cọc Chốt)"
 
 # Nhóm tư vấn tuyển sinh 1. Lọc theo ID phòng ban, không theo tên hiển thị.
@@ -112,17 +115,15 @@ def _r3_bills_over_total_data_field(group):
 
 def get_report_3_column_specs():
     """Cấu trúc header hai tầng dùng chung cho AgGrid và Excel của Báo cáo 3."""
-    from data_processing import AGE_GROUPS, REPORT_3_CONSOLIDATED_COLUMNS
-
     specs = [(None, [
         ('Thời gian xuất data', 'Thời gian xuất data', 'text', 140),
         ('ĐỢT HỌC THỬ', 'ĐỢT HỌC THỬ', 'text', 160),
         ('Nguồn', 'Nguồn', 'text', 200),
     ])]
-    for group in AGE_GROUPS + ['TỔNG'] + REPORT_3_CONSOLIDATED_COLUMNS:
+    for group in REPORT_3_AGE_GROUPS + ['TỔNG'] + REPORT_3_CONSOLIDATED_COLUMNS:
         specs.append((group, [
             ('Data (% Data)', _r3_data_display_field(group), 'text', 130),
-            ('Bills (% Bills)', _r3_bills_display_field(group), 'text', 130),
+            ('Bills (Bills / Tổng Data)', _r3_bills_display_field(group), 'text', 145),
             ('Tỷ lệ chốt', _r3_close_rate_field(group), 'pct', 110),
             ('Bills / Tổng Data', _r3_bills_over_total_data_field(group), 'pct', 135),
         ]))
@@ -147,7 +148,8 @@ def get_cached_base_reports(
     normalized_tvts1_manager_ids = tuple(sorted(normalized_manager_ids))
     key = (
         revision, id(raw_df), sessions, st.session_state.get('fetch_time'),
-        REPORT_1_SCHEMA_VERSION, REPORT_4_SCHEMA_VERSION, REPORT_5_SCHEMA_VERSION, REPORT_6_SCHEMA_VERSION,
+        REPORT_1_SCHEMA_VERSION, REPORT_3_SCHEMA_VERSION, REPORT_4_SCHEMA_VERSION,
+        REPORT_5_SCHEMA_VERSION, REPORT_6_SCHEMA_VERSION,
         bool(department_filter_active), normalized_tvts1_manager_ids,
     )
     cached = st.session_state.get('_base_reports_cache')
@@ -603,25 +605,25 @@ def prepare_excel_report_2(df_edited, dot_manual_df=None):
 def compute_report_3(df_filtered):
     """
     Tính toán Báo cáo 3: Ma trận Nguồn × Độ tuổi phân theo Đợt học thử với trọng số.
-    Bao gồm 7 nhóm tuổi, TỔNG, 3 nhóm tổng hợp và 11 cột Cọc Chốt tương ứng.
+    Bao gồm 8 nhóm tuổi, TỔNG, 3 nhóm tổng hợp và 12 cột Cọc Chốt tương ứng.
     
     Returns:
         pd.DataFrame với các cột:
         - Thời gian xuất data
         - ĐỢT HỌC THỬ
         - Nguồn
-        - Các nhóm tuổi (7 cột)
+        - Các nhóm tuổi (8 cột)
         - TỔNG
         - Ba nhóm tổng hợp theo yêu cầu nghiệp vụ
-        - 11 cột cọc chốt tương ứng (sẽ ẩn trên AgGrid)
+        - 12 cột cọc chốt tương ứng (sẽ ẩn trên AgGrid)
     """
     coc_columns = [
         f"{c}{COC_COL_SUFFIX}"
-        for c in AGE_GROUPS + ['TỔNG'] + REPORT_3_CONSOLIDATED_COLUMNS
+        for c in REPORT_3_AGE_GROUPS + ['TỔNG'] + REPORT_3_CONSOLIDATED_COLUMNS
     ]
     cols_order = (
         ['Thời gian xuất data', 'ĐỢT HỌC THỬ', 'Nguồn']
-        + AGE_GROUPS
+        + REPORT_3_AGE_GROUPS
         + ['TỔNG']
         + REPORT_3_CONSOLIDATED_COLUMNS
         + coc_columns
@@ -636,25 +638,23 @@ def compute_report_3(df_filtered):
     report_3_source_column = "_report_3_sources_with_weights"
     df_report_3 = df_filtered.copy()
 
-    # Fallback an toàn: nếu "Data_coc_chot" chưa có trong df_report_3
-    if "Data_coc_chot" not in df_report_3.columns:
-        if "Mối quan hệ" in df_report_3.columns:
-            df_report_3["Data_coc_chot"] = df_report_3["Mối quan hệ"].isin(COC_CHOT_LABELS).astype(int)
-        elif "relation_name" in df_report_3.columns:
-            df_report_3["Data_coc_chot"] = df_report_3["relation_name"].isin(COC_CHOT_LABELS).astype(int)
-        else:
-            df_report_3["Data_coc_chot"] = 0
+    # Bills dùng đúng L8 + L9 + L10 như "Đã cọc chốt" của Báo cáo 1.
+    # Luôn tính lại từ relation_id để tên nhãn Getfly thay đổi không làm lệch số liệu.
+    if "relation_id" not in df_report_3.columns:
+        raise ValueError("Dữ liệu thiếu relation_id. Vui lòng tải lại dữ liệu Getfly.")
+    relation_ids = pd.to_numeric(df_report_3["relation_id"], errors="coerce")
+    df_report_3["Data_coc_chot"] = relation_ids.isin(REPORT_3_BILL_RELATION_IDS).astype(int)
 
     # Luôn phân loại lại từ description để session cũ không giữ nhóm tuổi cũ.
     # Nếu không còn description, chuẩn hóa cột Nhóm tuổi hiện có theo schema mới.
     if "description" in df_report_3.columns:
-        df_report_3["Nhóm tuổi"] = df_report_3["description"].apply(classify_age_group)
+        df_report_3["Nhóm tuổi"] = df_report_3["description"].apply(classify_report_3_age_group)
     else:
         age_values = df_report_3.get(
             "Nhóm tuổi",
             pd.Series(index=df_report_3.index, dtype=object),
         )
-        df_report_3["Nhóm tuổi"] = age_values.apply(classify_age_group)
+        df_report_3["Nhóm tuổi"] = age_values.apply(classify_report_3_age_group)
 
     if report_3_source_column not in df_report_3.columns:
         source_details = df_report_3.get(
@@ -684,21 +684,21 @@ def compute_report_3(df_filtered):
         .sum()
     )
     
-    pivot = grouped["Weight"].unstack(fill_value=0).reindex(columns=AGE_GROUPS, fill_value=0)
-    pivot_coc = grouped["Weight_coc"].unstack(fill_value=0).reindex(columns=AGE_GROUPS, fill_value=0)
+    pivot = grouped["Weight"].unstack(fill_value=0).reindex(columns=REPORT_3_AGE_GROUPS, fill_value=0)
+    pivot_coc = grouped["Weight_coc"].unstack(fill_value=0).reindex(columns=REPORT_3_AGE_GROUPS, fill_value=0)
     
     # Đổi tên các cột pivot_coc thành f"{g}{COC_COL_SUFFIX}"
-    pivot_coc = pivot_coc.rename(columns={g: f"{g}{COC_COL_SUFFIX}" for g in AGE_GROUPS})
+    pivot_coc = pivot_coc.rename(columns={g: f"{g}{COC_COL_SUFFIX}" for g in REPORT_3_AGE_GROUPS})
 
     # Tính TỔNG theo hàng
-    pivot["TỔNG"] = pivot[AGE_GROUPS].sum(axis=1)
-    coc_age_cols = [f"{g}{COC_COL_SUFFIX}" for g in AGE_GROUPS]
+    pivot["TỔNG"] = pivot[REPORT_3_AGE_GROUPS].sum(axis=1)
+    coc_age_cols = [f"{g}{COC_COL_SUFFIX}" for g in REPORT_3_AGE_GROUPS]
     pivot_coc[f"TỔNG{COC_COL_SUFFIX}"] = pivot_coc[coc_age_cols].sum(axis=1)
     
     # Các nhóm tổng hợp mới (thường)
     pivot[REPORT_3_STUDENT_YOUNG_COLUMN] = (
         pivot.get("Sinh Viên", 0)
-        + pivot.get("Người đi làm dưới 35 Tuổi", 0)
+        + pivot.get("Người đi làm từ 22 - 35 tuổi", 0)
     )
     pivot[REPORT_3_SCHOOL_WORKER_COLUMN] = (
         pivot.get("Học sinh cấp 2", 0)
@@ -713,7 +713,7 @@ def compute_report_3(df_filtered):
     # Các nhóm tổng hợp mới (Cọc Chốt - cùng công thức trên các cột coc)
     pivot_coc[f"{REPORT_3_STUDENT_YOUNG_COLUMN}{COC_COL_SUFFIX}"] = (
         pivot_coc.get(f"Sinh Viên{COC_COL_SUFFIX}", 0)
-        + pivot_coc.get(f"Người đi làm dưới 35 Tuổi{COC_COL_SUFFIX}", 0)
+        + pivot_coc.get(f"Người đi làm từ 22 - 35 tuổi{COC_COL_SUFFIX}", 0)
     )
     pivot_coc[f"{REPORT_3_SCHOOL_WORKER_COLUMN}{COC_COL_SUFFIX}"] = (
         pivot_coc.get(f"Học sinh cấp 2{COC_COL_SUFFIX}", 0)
@@ -746,7 +746,7 @@ def aggregate_report_3_rows(df_rows, time_val, dot_val, nguon_val):
         'Nguồn': nguon_val,
     }
     
-    for g in AGE_GROUPS:
+    for g in REPORT_3_AGE_GROUPS:
         row_dict[g] = round(float(df_rows[g].sum()), 2) if g in df_rows else 0.0
         
     tot = round(float(df_rows['TỔNG'].sum()), 2) if 'TỔNG' in df_rows else 0.0
@@ -755,8 +755,8 @@ def aggregate_report_3_rows(df_rows, time_val, dot_val, nguon_val):
     for col in REPORT_3_CONSOLIDATED_COLUMNS:
         row_dict[col] = round(float(df_rows[col].sum()), 2) if col in df_rows else 0.0
     
-    # 11 cột Cọc Chốt
-    for col in AGE_GROUPS + ['TỔNG'] + REPORT_3_CONSOLIDATED_COLUMNS:
+    # Các cột Cọc Chốt tương ứng với toàn bộ nhóm tuổi và nhóm tổng hợp
+    for col in REPORT_3_AGE_GROUPS + ['TỔNG'] + REPORT_3_CONSOLIDATED_COLUMNS:
         coc_col = f"{col}{COC_COL_SUFFIX}"
         row_dict[coc_col] = round(float(df_rows[coc_col].sum()), 2) if coc_col in df_rows else 0.0
 
@@ -770,42 +770,6 @@ def _format_r3_value(value):
     except (ValueError, TypeError):
         number = 0.0
     return str(int(number)) if number.is_integer() else f"{number:.2f}"
-
-
-def _format_r3_excel_cell(val, tong, coc_val, coc_tong):
-    """
-    Format ô Báo cáo 3 cho Excel theo dạng: 'num (pct%) / cocNum (cocPct%)'.
-    - Số nguyên giữ nguyên không decimal, số lẻ làm tròn 2 chữ số thập phân.
-    - % làm tròn 2 chữ số (ví dụ '10.00%').
-    - Mẫu số tong <= 0 hoặc coc_tong <= 0 thì pct tương ứng = 0.00%.
-    """
-    try:
-        v = float(val) if pd.notna(val) else 0.0
-    except (ValueError, TypeError):
-        v = 0.0
-        
-    try:
-        t = float(tong) if pd.notna(tong) else 0.0
-    except (ValueError, TypeError):
-        t = 0.0
-
-    try:
-        cv = float(coc_val) if pd.notna(coc_val) else 0.0
-    except (ValueError, TypeError):
-        cv = 0.0
-        
-    try:
-        ct = float(coc_tong) if pd.notna(coc_tong) else 0.0
-    except (ValueError, TypeError):
-        ct = 0.0
-
-    v_str = str(int(v)) if v.is_integer() else f"{v:.2f}"
-    pct = (v / t * 100) if t > 0 else 0.0
-
-    cv_str = str(int(cv)) if cv.is_integer() else f"{cv:.2f}"
-    coc_pct = (cv / ct * 100) if ct > 0 else 0.0
-
-    return f"{v_str} ({pct:.2f}%) / {cv_str} ({coc_pct:.2f}%)"
 
 
 def prepare_excel_report_3(df_report_3):
@@ -822,7 +786,7 @@ def prepare_excel_report_3(df_report_3):
         aggregate_fn=aggregate_report_3_rows
     )
     
-    target_cols = AGE_GROUPS + ['TỔNG'] + REPORT_3_CONSOLIDATED_COLUMNS
+    target_cols = REPORT_3_AGE_GROUPS + ['TỔNG'] + REPORT_3_CONSOLIDATED_COLUMNS
     formatted_rows = []
 
     for _, row in df_result.iterrows():
@@ -832,21 +796,18 @@ def prepare_excel_report_3(df_report_3):
             'Nguồn': row.get('Nguồn', ''),
         }
         row_total = float(row.get('TỔNG', 0.0))
-        row_coc_total = float(row.get(f"TỔNG{COC_COL_SUFFIX}", 0.0))
 
-        # Mỗi nhóm: Data (% Data), Bills (% Bills), tỷ lệ chốt, Bills/Tổng Data.
+        # Mỗi nhóm: Data, Bills, tỷ lệ chốt và Bills/Tổng Data.
         for col in target_cols:
             col_coc = f"{col}{COC_COL_SUFFIX}"
             val = float(row.get(col, 0.0))
             coc_val = float(row.get(col_coc, 0.0))
             data_pct = (val / row_total * 100) if row_total > 0 else 0.0
-            bills_pct = (coc_val / row_coc_total * 100) if row_coc_total > 0 else 0.0
+            bills_pct = (coc_val / row_total * 100) if row_total > 0 else 0.0
             new_row[_r3_data_display_field(col)] = f"{_format_r3_value(val)} ({data_pct:.2f}%)"
             new_row[_r3_bills_display_field(col)] = f"{_format_r3_value(coc_val)} ({bills_pct:.2f}%)"
             new_row[_r3_close_rate_field(col)] = (coc_val / val * 100) if val > 0 else 0.0
-            new_row[_r3_bills_over_total_data_field(col)] = (
-                coc_val / row_total * 100 if row_total > 0 else 0.0
-            )
+            new_row[_r3_bills_over_total_data_field(col)] = bills_pct
         formatted_rows.append(new_row)
 
     return pd.DataFrame(formatted_rows)[out_cols]
@@ -1150,7 +1111,7 @@ def classify_report_5_age_group(description, fallback_age_group=None):
     Phân loại tuổi chỉ cho BC5.
 
     Nhóm phụ huynh được nhận diện từ description (hoặc Nhóm tuổi fallback), còn
-    toàn bộ quy tắc tuổi chung vẫn dùng classify_age_group để BC3 không đổi schema.
+    toàn bộ quy tắc tuổi chung vẫn dùng classify_age_group để không đổi schema dùng chung.
     """
     candidate = description if isinstance(description, str) and description.strip() else fallback_age_group
     if _is_report_5_parent_group(candidate):
