@@ -449,6 +449,36 @@ class CellRenderer {
 """)
 
 
+REPORT_3_AGE_DATA_ALERT_RULES = {
+    'Học sinh cấp 2': (10, '#ffcccc'),
+    'Học sinh cấp 3': (10, '#ffcccc'),
+    'Phụ huynh có con C2, C3': (10, '#ffcccc'),
+    'Sinh Viên': (15, '#ccffcc'),
+    'Người đi làm từ 22 - 35 tuổi': (15, '#ccffcc'),
+    'Người đi làm từ 35 - 50 Tuổi': (30, '#ccffcc'),
+}
+
+
+style_r3_total_data_alert = JsCode("""
+function(params) {
+    if (!params.node || !params.node.rowPinned || !params.data) return {};
+
+    var rawValue = params.value;
+    if (rawValue === null || rawValue === undefined) {
+        rawValue = params.data[params.colDef.field];
+    }
+    var value = Number(rawValue);
+    var total = Number(params.data['TỔNG'] || 0);
+    if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return {};
+
+    var pct = value / total * 100;
+    var threshold = Number(params.colDef.alertThreshold);
+    var color = params.colDef.alertColor;
+    return pct > threshold ? {'backgroundColor': color} : {};
+}
+""")
+
+
 getter_r3_close_rate = JsCode("""
 function(params) {
     var dataField = params.colDef.dataField;
@@ -955,7 +985,14 @@ def configure_report3_grid_columns(gb):
             'headerName': 'Data (Data / Tổng Data)', 'field': group, 'aggFunc': 'sum',
             'cellRenderer': formatter_r3_data, 'width': 130,
         }
-        if group in style_by_group:
+        if group in REPORT_3_AGE_DATA_ALERT_RULES:
+            threshold, color = REPORT_3_AGE_DATA_ALERT_RULES[group]
+            data_child.update({
+                'cellStyle': style_r3_total_data_alert,
+                'alertThreshold': threshold,
+                'alertColor': color,
+            })
+        elif group in style_by_group:
             data_child['cellStyle'] = style_by_group[group]
         elif child_style:
             data_child['cellStyle'] = child_style
