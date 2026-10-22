@@ -1102,27 +1102,20 @@ function(params) {{
 """)
 
 
-def _build_report5_school_parent_alert_style(groups, threshold, age_ratio_field):
-    """
-    Tô đồng thời ba ô tỉ lệ độ tuổi khi tổng tỉ lệ của ba nhóm vượt ngưỡng.
-    Dùng chung một hàm style cho cả ba cột để điều kiện luôn đồng nhất.
-    """
-    ratio_fields = [age_ratio_field(group) for group in groups]
-    total_expression = " + ".join(
-        f"toNumber(row[{field!r}])" for field in ratio_fields
-    )
+def _build_report5_age_ratio_alert_style(threshold, color):
+    """Tô màu ô tỉ lệ độ tuổi khi giá trị vượt ngưỡng cảnh báo (> threshold)."""
     return JsCode(f"""
 function(params) {{
-    var row = params.data || (params.node && params.node.aggData) || {{}};
-    function toNumber(value) {{
-        var number = Number(value);
-        return Number.isFinite(number) ? number : 0;
-    }}
-    var combinedRatio = {total_expression};
-    if (combinedRatio <= {threshold}) return {{}};
-    return {{'backgroundColor': '#ffcccc'}};
+    var value = Number(params.value);
+    if (!Number.isFinite(value) || value <= {threshold}) return {{}};
+    return {{'backgroundColor': '{color}'}};
 }}
 """)
+
+
+def _build_report5_school_parent_alert_style(groups, threshold, age_ratio_field):
+    """(Deprecated) Giữ lại để tương thích ngược nếu có module khác import."""
+    return _build_report5_age_ratio_alert_style(threshold, '#ffcccc')
 
 
 def configure_report5_grid_columns(gb, include_costs=True):
@@ -1134,8 +1127,7 @@ def configure_report5_grid_columns(gb, include_costs=True):
     from report_5_schema import (
         REPORT_5_DISPLAY_GROUPS,
         REPORT_5_ERROR_PERCENT_RED_THRESHOLD,
-        REPORT_5_SCHOOL_PARENT_GROUPS,
-        REPORT_5_SCHOOL_PARENT_RATIO_RED_THRESHOLD,
+        REPORT_5_AGE_RATIO_ALERT_RULES,
         FIELD_TIME,
         FIELD_SOURCE,
         FIELD_ERROR_COUNT,
@@ -1154,11 +1146,10 @@ def configure_report5_grid_columns(gb, include_costs=True):
     error_alert_style = _build_report5_error_alert_style(
         REPORT_5_ERROR_PERCENT_RED_THRESHOLD
     )
-    school_parent_alert_style = _build_report5_school_parent_alert_style(
-        REPORT_5_SCHOOL_PARENT_GROUPS,
-        REPORT_5_SCHOOL_PARENT_RATIO_RED_THRESHOLD,
-        age_ratio_field,
-    )
+    alert_styles = {
+        rule: _build_report5_age_ratio_alert_style(rule[0], rule[1])
+        for rule in set(REPORT_5_AGE_RATIO_ALERT_RULES.values())
+    }
 
     col_defs = {
         'Thời gian xuất data': {
@@ -1244,8 +1235,9 @@ def configure_report5_grid_columns(gb, include_costs=True):
             _make_child('Tỉ lệ chốt', close_ratio_field(group), 110, pct_formatter),
             _make_child('%Bills', bill_share_field(group), 100, pct_formatter),
         ]
-        if group in REPORT_5_SCHOOL_PARENT_GROUPS:
-            children[1]['cellStyle'] = school_parent_alert_style
+        if not is_tong and group in REPORT_5_AGE_RATIO_ALERT_RULES:
+            rule = REPORT_5_AGE_RATIO_ALERT_RULES[group]
+            children[1]['cellStyle'] = alert_styles[rule]
 
         col_defs[group] = {
             'headerName': group,

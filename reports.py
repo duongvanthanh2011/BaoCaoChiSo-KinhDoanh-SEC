@@ -622,6 +622,7 @@ def render_report_5(results_5, selected_sessions=None, repository=None):
             &bull; Bảng <b>Facebook</b> gồm nguồn Facebook thường, Facebook CV OFF và Facebook Sinh viên Offline; bảng <b>Tổng Facebook + Google</b> cũng bao gồm phần Sinh viên Offline này.<br>
             &bull; <b>Facebook – Data Không Gọi</b> tổng hợp cả nguồn cũ có hậu tố <b>KOG1–KOG6</b> và nguồn mới bắt đầu bằng <b>ADS</b>, kết thúc <b>DATA KHÔNG GỌI KOG FB1–FB6</b>; tách khỏi ba bảng Facebook, Google và Tổng Facebook + Google; vẫn giữ trọng số nguồn 1/N.<br>
             &bull; Bảng Data Không Gọi chỉ có số liệu CRM (Data, Bills, sai số, độ tuổi), <b>không phân bổ chi phí</b> do chi phí hiện chỉ được nhập chung theo Facebook/Google × TC.<br>
+            &bull; <b>Quy tắc cảnh báo màu tỉ lệ độ tuổi:</b> Báo đỏ khi Học sinh C2, C3, Phụ huynh &gt; 10%; Báo xanh khi Sinh viên, Người đi làm 22–35 tuổi &gt; 15%; Người đi làm 35–50 tuổi &gt; 30%.<br>
             &bull; Bảng hỗ trợ cuộn ngang để theo dõi toàn bộ các chỉ số chi tiết.
         </div>
         """,
