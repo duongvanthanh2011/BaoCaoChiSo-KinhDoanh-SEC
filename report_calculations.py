@@ -39,6 +39,8 @@ from data_processing import (
 )
 from report_5_schema import (
     REPORT_5_SCHEMA_VERSION,
+    REPORT_5_BILL_RELATION_IDS,
+    REPORT_5_ERROR_RELATION_IDS,
     REPORT_5_CHANNEL_FACEBOOK,
     REPORT_5_CHANNEL_GOOGLE,
     REPORT_5_CHANNEL_TOTAL,
@@ -46,6 +48,7 @@ from report_5_schema import (
     REPORT_5_TC_ROWS,
     REPORT_5_AGE_GROUPS,
     REPORT_5_PARENT_GROUP,
+    REPORT_5_WORKER_22_35_GROUP,
     REPORT_5_DISPLAY_GROUPS,
     FIELD_TIME,
     FIELD_SOURCE,
@@ -1110,12 +1113,19 @@ def classify_report_5_age_group(description, fallback_age_group=None):
     """
     Phân loại tuổi chỉ cho BC5.
 
-    Nhóm phụ huynh được nhận diện từ description (hoặc Nhóm tuổi fallback), còn
-    toàn bộ quy tắc tuổi chung vẫn dùng classify_age_group để không đổi schema dùng chung.
+    Nhận diện phụ huynh và gộp các nhãn dưới 35 vào nhóm 22–35 từ description
+    (hoặc Nhóm tuổi fallback); các nhóm còn lại giữ quy tắc classify_age_group.
     """
     candidate = description if isinstance(description, str) and description.strip() else fallback_age_group
     if _is_report_5_parent_group(candidate):
         return REPORT_5_PARENT_GROUP
+
+    if isinstance(candidate, str) and candidate.strip().lower() in (
+        REPORT_5_WORKER_22_35_GROUP.lower(),
+        "người đi làm dưới 35 tuổi",
+        "người đi làm từ dưới 35 tuổi",
+    ):
+        return REPORT_5_WORKER_22_35_GROUP
 
     common_group = classify_age_group(candidate)
     if common_group in REPORT_5_AGE_GROUPS:
@@ -1152,15 +1162,12 @@ def build_report_5_tables(df_filtered, fetch_time):
 
     df_calc = df_filtered.copy()
 
-    # Chuẩn hóa Data_coc_chot
-    if "Data_coc_chot" not in df_calc.columns:
-        rel = df_calc.get("Mối quan hệ", pd.Series(index=df_calc.index, dtype=object)).fillna("")
-        df_calc["Data_coc_chot"] = rel.isin(COC_CHOT_LABELS).astype(int)
-
-    # Chuẩn hóa Data_sai_so
-    if "SAI SỐ - SAI ĐỐI TƯỢNG" not in df_calc.columns:
-        rel = df_calc.get("Mối quan hệ", pd.Series(index=df_calc.index, dtype=object)).fillna("")
-        df_calc["SAI SỐ - SAI ĐỐI TƯỢNG"] = rel.isin(SAI_SO_SAI_DOI_TUONG_LABELS).astype(int)
+    # Tính lại theo ID như BC1, không phụ thuộc tên nhãn hay cờ tính sẵn.
+    if "relation_id" not in df_calc.columns:
+        raise ValueError("Dữ liệu thiếu relation_id. Vui lòng tải lại dữ liệu Getfly.")
+    relation_ids = pd.to_numeric(df_calc["relation_id"], errors="coerce")
+    df_calc["Data_coc_chot"] = relation_ids.isin(REPORT_5_BILL_RELATION_IDS).astype(int)
+    df_calc["SAI SỐ - SAI ĐỐI TƯỢNG"] = relation_ids.isin(REPORT_5_ERROR_RELATION_IDS).astype(int)
 
     # Phân loại tuổi cục bộ BC5: nhận diện thêm phụ huynh nhưng không đổi AGE_GROUPS chung.
     raw_description = df_calc.get("description", pd.Series(index=df_calc.index, dtype=object))

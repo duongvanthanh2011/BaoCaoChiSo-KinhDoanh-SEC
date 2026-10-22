@@ -4,7 +4,10 @@ Tập trung toàn bộ hằng số, danh sách nhóm tuổi, TC, field nội b�
 Không phụ thuộc Streamlit hoặc pandas.
 """
 
-REPORT_5_SCHEMA_VERSION = 7
+REPORT_5_SCHEMA_VERSION = 8
+
+REPORT_5_BILL_RELATION_IDS = (15, 51, 6)  # L8 + L9 + L10, như Báo cáo 1
+REPORT_5_ERROR_RELATION_IDS = (45, 22, 41, 44)  # L13 + L14 + L15 + L16
 
 REPORT_5_CHANNEL_FACEBOOK = "facebook"
 REPORT_5_CHANNEL_GOOGLE = "google"
@@ -17,6 +20,7 @@ REPORT_5_TC_ROWS = (
 )
 
 REPORT_5_PARENT_GROUP = "Phụ huynh có con C2, C3"
+REPORT_5_WORKER_22_35_GROUP = "Người đi làm từ 22 - 35 tuổi"
 
 # Ngưỡng cảnh báo màu đỏ trên bảng Báo cáo 5. Các giá trị phần trăm trong
 # DataFrame được lưu theo thang 0..100 (ví dụ 7.5 nghĩa là 7.5%).
@@ -33,7 +37,7 @@ REPORT_5_AGE_GROUPS = (
     "Học sinh cấp 3",
     REPORT_5_PARENT_GROUP,
     "Sinh Viên",
-    "Người đi làm dưới 35 Tuổi",
+    REPORT_5_WORKER_22_35_GROUP,
     "Người đi làm từ 35 - 50 Tuổi",
     "Khác",
 )
