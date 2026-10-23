@@ -4,7 +4,7 @@ Tập trung toàn bộ hằng số, danh sách nhóm tuổi, TC, field nội b�
 Không phụ thuộc Streamlit hoặc pandas.
 """
 
-REPORT_5_SCHEMA_VERSION = 9
+REPORT_5_SCHEMA_VERSION = 10
 
 REPORT_5_BILL_RELATION_IDS = (15, 51, 6)  # L8 + L9 + L10, như Báo cáo 1
 REPORT_5_ERROR_RELATION_IDS = (45, 22, 41, 44)  # L13 + L14 + L15 + L16

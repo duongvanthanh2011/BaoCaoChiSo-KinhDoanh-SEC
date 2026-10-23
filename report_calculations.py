@@ -1064,12 +1064,16 @@ def finalize_report_5_metrics(frame):
     # TỔNG - %Bills = 100 nếu B_total > 0 ngược lại 0
     df[bill_share_field("TỔNG")] = (b_total > 0).astype(float) * 100.0
 
-    # 4. Data sai số
-    df[FIELD_ERROR_PERCENT] = (s_total / d_total.where(d_total > 0) * 100.0).fillna(0.0).round(2)
+    # 4. Data sai số: SL Data theo tuổi đã loại sai số, nên mẫu số gốc là hợp lệ + sai số.
+    raw_data_total = d_total + s_total
+    df[FIELD_ERROR_PERCENT] = (
+        s_total / raw_data_total.where(raw_data_total > 0) * 100.0
+    ).fillna(0.0).round(2)
 
     # 5. Chi phí
-    valid_data = (d_total - s_total).clip(lower=0.0)
-    df[FIELD_COST_PER_VALID_DATA] = (cost_total / valid_data.where(valid_data > 0)).fillna(0.0).round(2)
+    df[FIELD_COST_PER_VALID_DATA] = (
+        cost_total / d_total.where(d_total > 0)
+    ).fillna(0.0).round(2)
     df[FIELD_COST_PER_BILL] = (cost_total / b_total.where(b_total > 0)).fillna(0.0).round(2)
 
     # Giữ nguyên thứ tự cột chuẩn
@@ -1201,7 +1205,7 @@ def build_report_5_tables(df_filtered, fetch_time):
                         "Kênh": ch,
                         "Nguồn": tc,
                         "Nhóm tuổi": age_group,
-                        "DataWeight": w,
+                        "DataWeight": w * (1 - is_err),
                         "BillWeight": w * is_coc,
                         "ErrorWeight": w * is_err,
                     })
