@@ -4,7 +4,7 @@ Tập trung toàn bộ hằng số, danh sách nhóm tuổi, TC, field nội b�
 Không phụ thuộc Streamlit hoặc pandas.
 """
 
-REPORT_5_SCHEMA_VERSION = 10
+REPORT_5_SCHEMA_VERSION = 11
 
 REPORT_5_BILL_RELATION_IDS = (15, 51, 6)  # L8 + L9 + L10, như Báo cáo 1
 REPORT_5_ERROR_RELATION_IDS = (45, 22, 41, 44)  # L13 + L14 + L15 + L16
@@ -21,6 +21,8 @@ REPORT_5_TC_ROWS = (
 
 REPORT_5_PARENT_GROUP = "Phụ huynh có con C2, C3"
 REPORT_5_WORKER_22_35_GROUP = "Người đi làm từ 22 - 35 tuổi"
+REPORT_5_STUDENT_WORKER_GROUP = "Nhóm SV + Người đi làm từ 22-35 tuổi"
+REPORT_5_SCHOOL_PARENT_GROUP = "HS C2 + C3 + Phụ huynh có con C2, C3"
 
 # Ngưỡng cảnh báo màu đỏ trên bảng Báo cáo 5. Các giá trị phần trăm trong
 # DataFrame được lưu theo thang 0..100 (ví dụ 7.5 nghĩa là 7.5%).
@@ -63,7 +65,18 @@ REPORT_5_AGE_GROUPS = (
     "Khác",
 )
 
-REPORT_5_DISPLAY_GROUPS = REPORT_5_AGE_GROUPS + ("TỔNG",)
+REPORT_5_CONSOLIDATED_GROUP_COMPONENTS = {
+    REPORT_5_STUDENT_WORKER_GROUP: ("Sinh Viên", REPORT_5_WORKER_22_35_GROUP),
+    REPORT_5_SCHOOL_PARENT_GROUP: (
+        "Học sinh cấp 2",
+        "Học sinh cấp 3",
+        REPORT_5_PARENT_GROUP,
+    ),
+}
+REPORT_5_CONSOLIDATED_GROUPS = tuple(REPORT_5_CONSOLIDATED_GROUP_COMPONENTS)
+REPORT_5_DISPLAY_GROUPS = (
+    REPORT_5_AGE_GROUPS + ("TỔNG",) + REPORT_5_CONSOLIDATED_GROUPS
+)
 
 REPORT_5_AGE_METRICS = (
     "SL Data",

@@ -47,6 +47,8 @@ from report_5_schema import (
     REPORT_5_CHANNEL_DATA_KHONG_GOI,
     REPORT_5_TC_ROWS,
     REPORT_5_AGE_GROUPS,
+    REPORT_5_CONSOLIDATED_GROUP_COMPONENTS,
+    REPORT_5_CONSOLIDATED_GROUPS,
     REPORT_5_PARENT_GROUP,
     REPORT_5_WORKER_22_35_GROUP,
     REPORT_5_DISPLAY_GROUPS,
@@ -1039,13 +1041,22 @@ def finalize_report_5_metrics(frame):
     df[age_data_field("TỔNG")] = df[d_cols].sum(axis=1).round(2)
     df[age_bill_field("TỔNG")] = df[b_cols].sum(axis=1).round(2)
 
+    # Các nhóm tổng hợp chỉ là cột dẫn xuất, không cộng ngược vào TỔNG.
+    for group, components in REPORT_5_CONSOLIDATED_GROUP_COMPONENTS.items():
+        df[age_data_field(group)] = df[
+            [age_data_field(component) for component in components]
+        ].sum(axis=1).round(2)
+        df[age_bill_field(group)] = df[
+            [age_bill_field(component) for component in components]
+        ].sum(axis=1).round(2)
+
     d_total = df[age_data_field("TỔNG")]
     b_total = df[age_bill_field("TỔNG")]
     s_total = df[FIELD_ERROR_COUNT]
     cost_total = df[FIELD_COST_TOTAL].astype(float)
 
     # 2. Các chỉ số trong từng nhóm tuổi
-    for g in REPORT_5_AGE_GROUPS:
+    for g in REPORT_5_AGE_GROUPS + REPORT_5_CONSOLIDATED_GROUPS:
         dg = df[age_data_field(g)]
         bg = df[age_bill_field(g)]
 
