@@ -88,6 +88,7 @@ from report_1_schema import (
     KPI_SPECS as R1_KPIS, COUNT_FIELDS as R1_COUNTS,
     count_field as r1_count_field, calculate_percentages as r1_percentages,
     TRIAL_DEPOSIT_FIELD, TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_DEPOSIT_VISIBLE_FIELD,
+    OTHER_DEPOSIT_FIELD, TRIAL_STUDENT_RATIO_FIELD, ADDITIONAL_BILL_FIELD,
 )
 from time_utils import format_fetch_time
 
@@ -220,7 +221,10 @@ def compute_report_1(df_filtered):
     result = counts.groupby(R1_GROUP_COLUMNS, dropna=False)[R1_COUNTS].sum().reset_index()
     result['Thời gian xuất data'] = st.session_state.get('fetch_time') or format_fetch_time()
     result[TRIAL_DEPOSIT_FIELD] = 0
+    result[OTHER_DEPOSIT_FIELD] = 0
     result[TRIAL_DEPOSIT_RATIO_FIELD] = None
+    result[TRIAL_STUDENT_RATIO_FIELD] = None
+    result[ADDITIONAL_BILL_FIELD] = None
     result[TRIAL_DEPOSIT_VISIBLE_FIELD] = False
     return r1_percentages(result)[R1_ALL_COLUMNS]
 
@@ -394,13 +398,23 @@ def aggregate_report_1_rows(
     # Cấp hiển thị được caller chỉ định rõ; không suy đoán qua nhãn tiếng Việt.
     if TRIAL_DEPOSIT_FIELD in group.columns and show_trial_deposit:
         total_coc = int(pd.to_numeric(group[TRIAL_DEPOSIT_FIELD], errors='coerce').fillna(0).sum())
+        other_coc = int(pd.to_numeric(group[OTHER_DEPOSIT_FIELD], errors='coerce').fillna(0).sum())
+        closed_count = row[r1_count_field('Đã cọc chốt')]
         row[TRIAL_DEPOSIT_FIELD] = total_coc
+        row[OTHER_DEPOSIT_FIELD] = other_coc
         base_val = row.get(R1_BASE, 0)
         row[TRIAL_DEPOSIT_RATIO_FIELD] = total_coc / base_val * 100 if base_val > 0 else None
+        row[TRIAL_STUDENT_RATIO_FIELD] = (
+            (other_coc + closed_count) / base_val * 100 if base_val > 0 else None
+        )
+        row[ADDITIONAL_BILL_FIELD] = closed_count - (total_coc - other_coc)
         row[TRIAL_DEPOSIT_VISIBLE_FIELD] = True
     else:
         row[TRIAL_DEPOSIT_FIELD] = 0
+        row[OTHER_DEPOSIT_FIELD] = 0
         row[TRIAL_DEPOSIT_RATIO_FIELD] = None
+        row[TRIAL_STUDENT_RATIO_FIELD] = None
+        row[ADDITIONAL_BILL_FIELD] = None
         row[TRIAL_DEPOSIT_VISIBLE_FIELD] = False
 
     return r1_percentages(pd.DataFrame([row])).iloc[0].to_dict()

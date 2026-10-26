@@ -17,6 +17,7 @@ from report_1_schema import (
     KPI_SPECS as R1_KPIS, count_field as r1_count_field,
     KPI_HEADERS as R1_KPI_HEADERS, kpi_denominator as r1_kpi_denominator,
     TRIAL_DEPOSIT_FIELD, TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_DEPOSIT_VISIBLE_FIELD,
+    OTHER_DEPOSIT_FIELD, TRIAL_STUDENT_RATIO_FIELD, ADDITIONAL_BILL_FIELD,
     TRIAL_DEPOSIT_COLOR_SPEC, KPI_COLOR_HEX,
     kpi_color_labels, kpi_color_tooltip,
 )
@@ -823,8 +824,9 @@ def configure_report1_grid_columns(gb):
             headerTooltip=kpi_color_tooltip(target, low, high, direction), width=160,
         )
 
-    # Cột nhập tay Tổng cọc (ẩn khỏi bảng, chỉ dùng để tổng hợp)
-    gb.configure_column(TRIAL_DEPOSIT_FIELD, aggFunc="sum", hide=True, suppressColumnsToolPanel=True)
+    # Các cột nhập tay (ẩn khỏi bảng, chỉ dùng để tổng hợp theo đợt).
+    for field in (TRIAL_DEPOSIT_FIELD, OTHER_DEPOSIT_FIELD):
+        gb.configure_column(field, aggFunc="sum", hide=True, suppressColumnsToolPanel=True)
     gb.configure_column(TRIAL_DEPOSIT_VISIBLE_FIELD, hide=True, suppressColumnsToolPanel=True)
 
     # Cột mới: Tổng cọc buổi học thử/Tổng data đã chia (trừ sai số, sai đối tượng)
@@ -874,6 +876,73 @@ def configure_report1_grid_columns(gb):
             deposit_target, deposit_low, deposit_high, deposit_direction,
         ),
         width=175,
+    )
+
+    closed_count_field = r1_count_field('Đã cọc chốt')
+    getter_hoc_thu = JsCode("""
+    function(params) {
+        var node = params.node;
+        if (!node) return null;
+        var isTotal = Boolean(node.rowPinned);
+        var isDotGroup = Boolean((node.group || node.footer) && node.level === 0);
+        if (!isTotal && !isDotGroup) return null;
+
+        var data = !node.rowPinned && (node.group || node.footer) ? node.aggData : params.data;
+        if (!data) return null;
+        var count = Number(data[OTHER_DEPOSIT_COL] || 0) + Number(data[CLOSED_COUNT_COL] || 0);
+        var base = Number(data[BASE_COL] || 0);
+        return base > 0 ? count / base * 100 : null;
+    }
+    """.replace('OTHER_DEPOSIT_COL', json.dumps(OTHER_DEPOSIT_FIELD))
+        .replace('CLOSED_COUNT_COL', json.dumps(closed_count_field))
+        .replace('BASE_COL', json.dumps(R1_BASE)))
+    formatter_hoc_thu = JsCode("""
+    function(params) {
+        var node = params.node;
+        if (!node) return '';
+        var isTotal = Boolean(node.rowPinned);
+        var isDotGroup = Boolean((node.group || node.footer) && node.level === 0);
+        if (!isTotal && !isDotGroup) return '';
+
+        var data = !node.rowPinned && (node.group || node.footer) ? node.aggData : params.data;
+        if (!data) return '';
+        var count = Number(data[OTHER_DEPOSIT_COL] || 0) + Number(data[CLOSED_COUNT_COL] || 0);
+        var pct = Number.isFinite(params.value) ? params.value.toFixed(2) + '%' : '—';
+        return count + ' (' + pct + ')';
+    }
+    """.replace('OTHER_DEPOSIT_COL', json.dumps(OTHER_DEPOSIT_FIELD))
+        .replace('CLOSED_COUNT_COL', json.dumps(closed_count_field)))
+    gb.configure_column(
+        TRIAL_STUDENT_RATIO_FIELD,
+        valueGetter=getter_hoc_thu,
+        valueFormatter=formatter_hoc_thu,
+        headerName=TRIAL_STUDENT_RATIO_FIELD,
+        width=190,
+    )
+
+    getter_bill_thu_them = JsCode("""
+    function(params) {
+        var node = params.node;
+        if (!node) return null;
+        var isTotal = Boolean(node.rowPinned);
+        var isDotGroup = Boolean((node.group || node.footer) && node.level === 0);
+        if (!isTotal && !isDotGroup) return null;
+
+        var data = !node.rowPinned && (node.group || node.footer) ? node.aggData : params.data;
+        if (!data) return null;
+        var closed = Number(data[CLOSED_COUNT_COL] || 0);
+        var totalDeposit = Number(data[TRIAL_DEPOSIT_COL] || 0);
+        var otherDeposit = Number(data[OTHER_DEPOSIT_COL] || 0);
+        return closed - (totalDeposit - otherDeposit);
+    }
+    """.replace('CLOSED_COUNT_COL', json.dumps(closed_count_field))
+        .replace('TRIAL_DEPOSIT_COL', json.dumps(TRIAL_DEPOSIT_FIELD))
+        .replace('OTHER_DEPOSIT_COL', json.dumps(OTHER_DEPOSIT_FIELD)))
+    gb.configure_column(
+        ADDITIONAL_BILL_FIELD,
+        valueGetter=getter_bill_thu_them,
+        headerName=ADDITIONAL_BILL_FIELD,
+        width=150,
     )
 
 

@@ -25,6 +25,12 @@ REPORT_1_INPUT_SPECS = [
         "label": "Tổng cọc",
         "default": 0,
     },
+    {
+        "code": "r1_other_deposit",
+        "column": "Tổng cọc khác",
+        "label": "Tổng cọc khác",
+        "default": 0,
+    },
 ]
 
 REPORT_1_CODE_MAP = {spec["code"]: spec for spec in REPORT_1_INPUT_SPECS}

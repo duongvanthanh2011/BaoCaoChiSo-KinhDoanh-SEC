@@ -575,6 +575,7 @@ def _format_report_1_excel(ws, frame):
     from report_1_schema import (
         ALL_COLUMNS, KPI_SPECS, count_field, kpi_color,
         TRIAL_DEPOSIT_FIELD, TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_DEPOSIT_VISIBLE_FIELD,
+        OTHER_DEPOSIT_FIELD, TRIAL_STUDENT_RATIO_FIELD, ADDITIONAL_BILL_FIELD,
         TRIAL_DEPOSIT_COLOR_SPEC,
     )
 
@@ -599,6 +600,36 @@ def _format_report_1_excel(ws, frame):
             else:
                 cell.value = count
                 cell.number_format = '0" (—)"'
+
+    if TRIAL_STUDENT_RATIO_FIELD in frame.columns:
+        col = frame.columns.get_loc(TRIAL_STUDENT_RATIO_FIELD) + 1
+        counts = (
+            frame[OTHER_DEPOSIT_FIELD]
+            + frame[count_field('Đã cọc chốt')]
+        ).tolist()
+        visible = frame[TRIAL_DEPOSIT_VISIBLE_FIELD].fillna(False).astype(bool).tolist()
+        for index, row in enumerate(ws.iter_rows(min_row=2, min_col=col, max_col=col)):
+            cell = row[0]
+            count = int(counts[index])
+            if not visible[index]:
+                cell.value = ''
+            elif isinstance(cell.value, (int, float)):
+                cell.value /= 100
+                cell.number_format = f'"{count} ("0.00%")"'
+            else:
+                cell.value = count
+                cell.number_format = '0" (—)"'
+
+    if ADDITIONAL_BILL_FIELD in frame.columns:
+        col = frame.columns.get_loc(ADDITIONAL_BILL_FIELD) + 1
+        visible = frame[TRIAL_DEPOSIT_VISIBLE_FIELD].fillna(False).astype(bool).tolist()
+        for index, row in enumerate(ws.iter_rows(min_row=2, min_col=col, max_col=col)):
+            cell = row[0]
+            if not visible[index]:
+                cell.value = ''
+            elif isinstance(cell.value, (int, float)):
+                cell.value = int(cell.value)
+                cell.number_format = '0'
 
     if TRIAL_DEPOSIT_RATIO_FIELD in frame.columns:
         col = frame.columns.get_loc(TRIAL_DEPOSIT_RATIO_FIELD) + 1

@@ -82,6 +82,9 @@ from report_6_schema import (
 from report_1_schema import (
     TRIAL_DEPOSIT_FIELD,
     TRIAL_DEPOSIT_RATIO_FIELD,
+    OTHER_DEPOSIT_FIELD,
+    TRIAL_STUDENT_RATIO_FIELD,
+    ADDITIONAL_BILL_FIELD,
 )
 from manual_input_schema import (
     REPORT_1_CODE,
@@ -130,7 +133,9 @@ def render_report_1(
         "Tổng data đã chia gồm L1–L17 và L1.1, không gồm L0. "
         "KPI sai số/TĐKTC dùng Tổng data đã chia; các KPI còn lại dùng tổng sau khi trừ L14, L15. "
         "Mỗi KPI hiển thị Số lượng (Tỷ lệ%). Mẫu số bằng 0: tỷ lệ hiển thị —; "
-        "Chưa gọi CVHT vẫn đạt nếu không còn L1."
+        "Chưa gọi CVHT vẫn đạt nếu không còn L1. "
+        "Tổng học học thử = Tổng cọc khác + số lượng Đã cọc chốt; "
+        "bill thu thêm = Đã cọc chốt - (Tổng cọc - Tổng cọc khác)."
     )
     df_to_show = result.copy()
     unique_dots = sorted(df_to_show['ĐỢT HỌC THỬ'].unique().tolist()) if not df_to_show.empty else []
@@ -152,29 +157,29 @@ def render_report_1(
 
     # ====== THANH TÁC VỤ (LƯU DỮ LIỆU & TẢI LẠI) ======
     displayed_codes_by_dot = {
-        d: ["r1_trial_deposit_total"]
+        d: ["r1_trial_deposit_total", "r1_other_deposit"]
         for d in unique_dots_str
     }
     render_report_actions_bar(REPORT_1_CODE, unique_dots, displayed_codes_by_dot, repository=repository)
 
-    # ====== BẢNG NHẬP LIỆU TỔNG CỌC THEO ĐỢT ======
+    # ====== BẢNG NHẬP LIỆU CỌC THEO ĐỢT ======
     with manual_input_expander("✏️ Bảng nhập số liệu thực tế (Tổng cọc)"):
-        st.caption("Tổng cọc được lưu theo từng đợt học thử và dùng chung khi thay đổi bộ lọc.")
-        dot_manual_cols = [TRIAL_DEPOSIT_FIELD]
+        st.caption("Tổng cọc và Tổng cọc khác được lưu theo từng đợt học thử và dùng chung khi thay đổi bộ lọc.")
+        dot_manual_cols = [TRIAL_DEPOSIT_FIELD, OTHER_DEPOSIT_FIELD]
         dot_manual_df, manual_hash = render_dot_manual_inputs(
             "Số liệu theo đợt",
             dot_manual_key,
             unique_dots,
             dot_manual_cols,
             REPORT_1_COL_TO_CODE,
-            display_labels={TRIAL_DEPOSIT_FIELD: TRIAL_DEPOSIT_FIELD},
+            display_labels={field: field for field in dot_manual_cols},
             report_code=REPORT_1_CODE,
         )
 
     # Phân bổ giá trị nhập tay vào dòng đầu tiên mỗi đợt (để aggFunc sum hoạt động đúng ở group footer)
     df_to_show = assign_dot_manual_to_first_row(
         df_to_show, dot_manual_df,
-        [TRIAL_DEPOSIT_FIELD]
+        dot_manual_cols,
     )
 
     gb = GridOptionsBuilder.from_dataframe(df_to_show)
@@ -192,7 +197,7 @@ def render_report_1(
             show_trial_deposit=True,
         )
     render_report_color_legend(1)
-    render_aggrid_report(df_to_show, gb, pinned_row, f"grid_report_1_v6_{manual_hash}")
+    render_aggrid_report(df_to_show, gb, pinned_row, f"grid_report_1_v7_{manual_hash}")
 
     # TVTS 1 là bảng riêng để không bị cộng vào group footer/tổng của Báo cáo 1 chính.
     has_tvts1_data = isinstance(tvts1_result, pd.DataFrame) and not tvts1_result.empty
@@ -213,8 +218,11 @@ def render_report_1(
             gb_tvts1.configure_column("Phòng ban", width=105, pinned="left")
             gb_tvts1.configure_column("Người phụ trách", width=260, pinned="left")
             configure_report1_grid_columns(gb_tvts1)
-            gb_tvts1.configure_column(TRIAL_DEPOSIT_RATIO_FIELD, hide=True)
-            render_aggrid_report(tvts1_to_show, gb_tvts1, None, f"grid_report_1_tvts1_v6_{manual_hash}")
+            for field in (
+                TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_STUDENT_RATIO_FIELD, ADDITIONAL_BILL_FIELD,
+            ):
+                gb_tvts1.configure_column(field, hide=True)
+            render_aggrid_report(tvts1_to_show, gb_tvts1, None, f"grid_report_1_tvts1_v7_{manual_hash}")
 
     df_excel = prepare_excel_report_1(df_to_show)
     if has_tvts1_data:
