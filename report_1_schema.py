@@ -1,6 +1,6 @@
 """Trạng thái, công thức và ngưỡng KPI dùng riêng cho Báo cáo 1."""
 
-REPORT_1_SCHEMA_VERSION = 7
+REPORT_1_SCHEMA_VERSION = 8
 GROUP_COLUMNS = ['ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách']
 IDENTITY_COLUMNS = ['Thời gian xuất data', *GROUP_COLUMNS]
 TOTAL_FIELD = 'Tổng data đã chia'
@@ -28,7 +28,7 @@ KPI_HEADERS = {
     for field, *_ in RATIO_SPECS
 }
 KPI_HEADERS[ERROR_FIELD] = f'{ERROR_FIELD}/ Tổng data đã chia'
-KPI_HEADERS[NEGATIVE_ATTITUDE_FIELD] = f'{NEGATIVE_ATTITUDE_FIELD} / {BASE_FIELD}'
+KPI_HEADERS[NEGATIVE_ATTITUDE_FIELD] = f'{NEGATIVE_ATTITUDE_FIELD} / {TOTAL_FIELD}'
 
 # Cột nhập tay và cột tỷ lệ tổng cọc theo đợt học thử
 TRIAL_DEPOSIT_FIELD = 'Tổng cọc'
@@ -70,8 +70,8 @@ ALL_COLUMNS = [
 
 
 def kpi_denominator(field):
-    """Chỉ KPI sai số dùng tổng đã chia; các KPI còn lại dùng tổng hợp lệ."""
-    return TOTAL_FIELD if field == ERROR_FIELD else BASE_FIELD
+    """KPI sai số và L13 dùng tổng đã chia; các KPI còn lại dùng tổng hợp lệ."""
+    return TOTAL_FIELD if field in (ERROR_FIELD, NEGATIVE_ATTITUDE_FIELD) else BASE_FIELD
 
 
 def kpi_color(value, low, high, direction):
