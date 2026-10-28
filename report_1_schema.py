@@ -1,6 +1,6 @@
 """Trạng thái, công thức và ngưỡng KPI dùng riêng cho Báo cáo 1."""
 
-REPORT_1_SCHEMA_VERSION = 6
+REPORT_1_SCHEMA_VERSION = 7
 GROUP_COLUMNS = ['ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách']
 IDENTITY_COLUMNS = ['Thời gian xuất data', *GROUP_COLUMNS]
 TOTAL_FIELD = 'Tổng data đã chia'
@@ -10,6 +10,8 @@ BASE_FIELD = 'Tổng data đã chia (trừ sai số, sai đối tượng)'
 ASSIGNED_IDS = (16, 57, 39, 58, 23, 21, 59, 60, 15, 51, 6, 52, 32, 45, 22, 41, 44, 13)
 INVALID_IDS = (22, 41)
 ERROR_FIELD = 'Data sai số, sai đối tượng, SEC từ chối, TĐKTC'
+NEGATIVE_ATTITUDE_FIELD = 'Data thái độ k tích cực'
+NEGATIVE_ATTITUDE_RELATION_IDS = (45,)  # L13
 
 # field, numerator IDs, target, yellow lower/upper bounds, direction
 KPI_SPECS = (
@@ -20,11 +22,13 @@ KPI_SPECS = (
     ('Đã cọc chốt', (15, 51, 6), '12% (±2%)', 10, 12, 'higher'),
     (ERROR_FIELD, (45, 22, 41, 44), '6%–8%', 6, 8, 'lower'),
 )
+RATIO_SPECS = (*KPI_SPECS, (NEGATIVE_ATTITUDE_FIELD, NEGATIVE_ATTITUDE_RELATION_IDS, None, None, None, None))
 KPI_HEADERS = {
     field: f'{field}/ Tổng data chia trừ sai số, sai đối tượng'
-    for field, *_ in KPI_SPECS
+    for field, *_ in RATIO_SPECS
 }
 KPI_HEADERS[ERROR_FIELD] = f'{ERROR_FIELD}/ Tổng data đã chia'
+KPI_HEADERS[NEGATIVE_ATTITUDE_FIELD] = f'{NEGATIVE_ATTITUDE_FIELD} / {BASE_FIELD}'
 
 # Cột nhập tay và cột tỷ lệ tổng cọc theo đợt học thử
 TRIAL_DEPOSIT_FIELD = 'Tổng cọc'
@@ -48,9 +52,9 @@ def count_field(field):
     return f'_r1_count_{field}'
 
 
-COUNT_FIELDS = [TOTAL_FIELD, BASE_FIELD, *(count_field(s[0]) for s in KPI_SPECS)]
+COUNT_FIELDS = [TOTAL_FIELD, BASE_FIELD, *(count_field(s[0]) for s in RATIO_SPECS)]
 DISPLAY_COLUMNS = [
-    *IDENTITY_COLUMNS, TOTAL_FIELD, BASE_FIELD, ERROR_FIELD,
+    *IDENTITY_COLUMNS, TOTAL_FIELD, BASE_FIELD, ERROR_FIELD, NEGATIVE_ATTITUDE_FIELD,
     *(s[0] for s in KPI_SPECS if s[0] != ERROR_FIELD),
     TRIAL_DEPOSIT_RATIO_FIELD,
     TRIAL_STUDENT_RATIO_FIELD,
@@ -58,7 +62,7 @@ DISPLAY_COLUMNS = [
 ]
 ALL_COLUMNS = [
     *DISPLAY_COLUMNS,
-    *(count_field(s[0]) for s in KPI_SPECS),
+    *(count_field(s[0]) for s in RATIO_SPECS),
     TRIAL_DEPOSIT_FIELD,
     OTHER_DEPOSIT_FIELD,
     TRIAL_DEPOSIT_VISIBLE_FIELD,
@@ -102,7 +106,7 @@ def kpi_color_tooltip(target, low, high, direction):
 
 def calculate_percentages(frame):
     """Tỷ lệ 0..100; không có mẫu số hợp lệ thì để trống, không đánh giá KPI."""
-    for field, *_ in KPI_SPECS:
+    for field, *_ in RATIO_SPECS:
         denominator = frame[kpi_denominator(field)].where(frame[kpi_denominator(field)] > 0)
         frame[field] = frame[count_field(field)] / denominator * 100
     # Không còn L1 là đạt, kể cả nhóm không có data hợp lệ.

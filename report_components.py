@@ -573,7 +573,7 @@ def _format_report_1_excel(ws, frame):
     """Hiển thị số lượng (tỷ lệ) trong các cột KPI của Báo cáo 1."""
     from openpyxl.styles import Alignment, PatternFill
     from report_1_schema import (
-        ALL_COLUMNS, KPI_SPECS, count_field, kpi_color,
+        ALL_COLUMNS, RATIO_SPECS, count_field, kpi_color,
         TRIAL_DEPOSIT_FIELD, TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_DEPOSIT_VISIBLE_FIELD,
         OTHER_DEPOSIT_FIELD, TRIAL_STUDENT_RATIO_FIELD, ADDITIONAL_BILL_FIELD,
         TRIAL_DEPOSIT_COLOR_SPEC,
@@ -586,15 +586,16 @@ def _format_report_1_excel(ws, frame):
         ws.column_dimensions[cell.column_letter].width = 25
     ws.row_dimensions[1].height = 105
     ws.freeze_panes = 'E2'
-    for field, _, _, low, high, direction in KPI_SPECS:
+    for field, _, _, low, high, direction in RATIO_SPECS:
         col = frame.columns.get_loc(field) + 1
         counts = frame[count_field(field)].tolist()
         for index, row in enumerate(ws.iter_rows(min_row=2, min_col=col, max_col=col)):
             cell = row[0]
             count = int(counts[index])
             if isinstance(cell.value, (int, float)):
-                color = kpi_color(cell.value, low, high, direction)
-                cell.fill = PatternFill(fill_type='solid', fgColor=color)
+                if low is not None:
+                    color = kpi_color(cell.value, low, high, direction)
+                    cell.fill = PatternFill(fill_type='solid', fgColor=color)
                 cell.value /= 100
                 cell.number_format = f'"{count} ("0.00%")"'
             else:

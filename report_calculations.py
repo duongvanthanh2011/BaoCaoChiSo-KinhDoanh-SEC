@@ -85,7 +85,7 @@ from report_1_schema import (
     REPORT_1_SCHEMA_VERSION, GROUP_COLUMNS as R1_GROUP_COLUMNS,
     ALL_COLUMNS as R1_ALL_COLUMNS,
     TOTAL_FIELD as R1_TOTAL, BASE_FIELD as R1_BASE, ASSIGNED_IDS, INVALID_IDS,
-    KPI_SPECS as R1_KPIS, COUNT_FIELDS as R1_COUNTS,
+    RATIO_SPECS as R1_RATIOS, COUNT_FIELDS as R1_COUNTS,
     count_field as r1_count_field, calculate_percentages as r1_percentages,
     TRIAL_DEPOSIT_FIELD, TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_DEPOSIT_VISIBLE_FIELD,
     OTHER_DEPOSIT_FIELD, TRIAL_STUDENT_RATIO_FIELD, ADDITIONAL_BILL_FIELD,
@@ -216,7 +216,7 @@ def compute_report_1(df_filtered):
     counts = df_filtered[R1_GROUP_COLUMNS].copy()
     counts[R1_TOTAL] = relation_ids.isin(ASSIGNED_IDS).astype(int)
     counts[R1_BASE] = (relation_ids.isin(ASSIGNED_IDS) & ~relation_ids.isin(INVALID_IDS)).astype(int)
-    for field, ids, *_ in R1_KPIS:
+    for field, ids, *_ in R1_RATIOS:
         counts[r1_count_field(field)] = relation_ids.isin(ids).astype(int)
     result = counts.groupby(R1_GROUP_COLUMNS, dropna=False)[R1_COUNTS].sum().reset_index()
     result['Thời gian xuất data'] = st.session_state.get('fetch_time') or format_fetch_time()

@@ -197,7 +197,7 @@ def render_report_1(
             show_trial_deposit=True,
         )
     render_report_color_legend(1)
-    render_aggrid_report(df_to_show, gb, pinned_row, f"grid_report_1_v7_{manual_hash}")
+    render_aggrid_report(df_to_show, gb, pinned_row, f"grid_report_1_v8_{manual_hash}")
 
     # TVTS 1 là bảng riêng để không bị cộng vào group footer/tổng của Báo cáo 1 chính.
     has_tvts1_data = isinstance(tvts1_result, pd.DataFrame) and not tvts1_result.empty
@@ -222,7 +222,7 @@ def render_report_1(
                 TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_STUDENT_RATIO_FIELD, ADDITIONAL_BILL_FIELD,
             ):
                 gb_tvts1.configure_column(field, hide=True)
-            render_aggrid_report(tvts1_to_show, gb_tvts1, None, f"grid_report_1_tvts1_v7_{manual_hash}")
+            render_aggrid_report(tvts1_to_show, gb_tvts1, None, f"grid_report_1_tvts1_v8_{manual_hash}")
 
     df_excel = prepare_excel_report_1(df_to_show)
     if has_tvts1_data:

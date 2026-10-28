@@ -14,7 +14,8 @@ import pandas as pd
 from st_aggrid.shared import JsCode
 from report_1_schema import (
     TOTAL_FIELD as R1_TOTAL, BASE_FIELD as R1_BASE,
-    KPI_SPECS as R1_KPIS, count_field as r1_count_field,
+    KPI_SPECS as R1_KPIS, RATIO_SPECS as R1_RATIOS,
+    count_field as r1_count_field,
     KPI_HEADERS as R1_KPI_HEADERS, kpi_denominator as r1_kpi_denominator,
     TRIAL_DEPOSIT_FIELD, TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_DEPOSIT_VISIBLE_FIELD,
     OTHER_DEPOSIT_FIELD, TRIAL_STUDENT_RATIO_FIELD, ADDITIONAL_BILL_FIELD,
@@ -788,7 +789,7 @@ def configure_report1_grid_columns(gb):
     gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
     for field in (R1_TOTAL, R1_BASE):
         gb.configure_column(field, aggFunc='sum', width=150)
-    for field, _, target, low, high, direction in R1_KPIS:
+    for field, _, target, low, high, direction in R1_RATIOS:
         numerator = r1_count_field(field)
         denominator = r1_kpi_denominator(field)
         gb.configure_column(numerator, aggFunc='sum', hide=True, suppressColumnsToolPanel=True)
@@ -817,12 +818,12 @@ def configure_report1_grid_columns(gb):
             return count + ' (' + pct + ')';
         }
         """.replace('NUMERATOR', json.dumps(numerator)))
-        style = _report_1_color_style(low, high, direction)
-        gb.configure_column(
-            field, valueGetter=getter, valueFormatter=formatter, cellStyle=style,
-            headerName=R1_KPI_HEADERS[field],
-            headerTooltip=kpi_color_tooltip(target, low, high, direction), width=160,
-        )
+        options = dict(valueGetter=getter, valueFormatter=formatter,
+                       headerName=R1_KPI_HEADERS[field], width=160)
+        if target is not None:
+            options.update(cellStyle=_report_1_color_style(low, high, direction),
+                           headerTooltip=kpi_color_tooltip(target, low, high, direction))
+        gb.configure_column(field, **options)
 
     # Các cột nhập tay (ẩn khỏi bảng, chỉ dùng để tổng hợp theo đợt).
     for field in (TRIAL_DEPOSIT_FIELD, OTHER_DEPOSIT_FIELD):
