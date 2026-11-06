@@ -1,6 +1,6 @@
 """Trạng thái, công thức và ngưỡng KPI dùng riêng cho Báo cáo 1."""
 
-REPORT_1_SCHEMA_VERSION = 8
+REPORT_1_SCHEMA_VERSION = 9
 GROUP_COLUMNS = ['ĐỢT HỌC THỬ', 'Phòng ban', 'Người phụ trách']
 IDENTITY_COLUMNS = ['Thời gian xuất data', *GROUP_COLUMNS]
 TOTAL_FIELD = 'Tổng data đã chia'
@@ -34,8 +34,10 @@ KPI_HEADERS[NEGATIVE_ATTITUDE_FIELD] = f'{NEGATIVE_ATTITUDE_FIELD} / {TOTAL_FIEL
 TRIAL_DEPOSIT_FIELD = 'Tổng cọc'
 TRIAL_DEPOSIT_RATIO_FIELD = 'Tổng cọc buổi học thử/Tổng data đã chia (trừ sai số, sai đối tượng)'
 OTHER_DEPOSIT_FIELD = 'Tổng cọc khác'
-TRIAL_STUDENT_RATIO_FIELD = 'Tổng học học thử/Tổng data đã chia (trừ sai số, sai đối tượng)'
+TRIAL_STUDENT_RATIO_FIELD = 'Tổng cọc học thử/Tổng data đã chia (trừ sai số, sai đối tượng)'
 ADDITIONAL_BILL_FIELD = 'Số lượng bill thu thêm'
+DATA_ORDER_FIELD = 'Data order'
+ACTUAL_ORDER_RATIO_FIELD = 'Tỷ lệ data thực tế/data order'
 TRIAL_DEPOSIT_VISIBLE_FIELD = '_r1_show_trial_deposit'
 TRIAL_DEPOSIT_COLOR_SPEC = ('>18%', 16, 18, 'higher')
 KPI_HEADERS[TRIAL_DEPOSIT_RATIO_FIELD] = TRIAL_DEPOSIT_RATIO_FIELD
@@ -59,12 +61,14 @@ DISPLAY_COLUMNS = [
     TRIAL_DEPOSIT_RATIO_FIELD,
     TRIAL_STUDENT_RATIO_FIELD,
     ADDITIONAL_BILL_FIELD,
+    ACTUAL_ORDER_RATIO_FIELD,
 ]
 ALL_COLUMNS = [
     *DISPLAY_COLUMNS,
     *(count_field(s[0]) for s in RATIO_SPECS),
     TRIAL_DEPOSIT_FIELD,
     OTHER_DEPOSIT_FIELD,
+    DATA_ORDER_FIELD,
     TRIAL_DEPOSIT_VISIBLE_FIELD,
 ]
 

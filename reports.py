@@ -85,6 +85,8 @@ from report_1_schema import (
     OTHER_DEPOSIT_FIELD,
     TRIAL_STUDENT_RATIO_FIELD,
     ADDITIONAL_BILL_FIELD,
+    DATA_ORDER_FIELD,
+    ACTUAL_ORDER_RATIO_FIELD,
 )
 from manual_input_schema import (
     REPORT_1_CODE,
@@ -135,8 +137,9 @@ def render_report_1(
         "các KPI còn lại dùng tổng sau khi trừ L14, L15. "
         "Mỗi KPI hiển thị Số lượng (Tỷ lệ%). Mẫu số bằng 0: tỷ lệ hiển thị —; "
         "Chưa gọi CVHT vẫn đạt nếu không còn L1. "
-        "Tổng học học thử = Tổng cọc khác + số lượng Đã cọc chốt; "
-        "bill thu thêm = Đã cọc chốt - (Tổng cọc - Tổng cọc khác)."
+        "Tổng cọc học thử = Tổng cọc khác + số lượng Đã cọc chốt; "
+        "bill thu thêm = Đã cọc chốt - (Tổng cọc - Tổng cọc khác); "
+        "Tỷ lệ data thực tế/data order = Tổng data đã chia / Data order."
     )
     df_to_show = result.copy()
     unique_dots = sorted(df_to_show['ĐỢT HỌC THỬ'].unique().tolist()) if not df_to_show.empty else []
@@ -158,15 +161,15 @@ def render_report_1(
 
     # ====== THANH TÁC VỤ (LƯU DỮ LIỆU & TẢI LẠI) ======
     displayed_codes_by_dot = {
-        d: ["r1_trial_deposit_total", "r1_other_deposit"]
+        d: ["r1_trial_deposit_total", "r1_other_deposit", "r1_ordered_data"]
         for d in unique_dots_str
     }
     render_report_actions_bar(REPORT_1_CODE, unique_dots, displayed_codes_by_dot, repository=repository)
 
-    # ====== BẢNG NHẬP LIỆU CỌC THEO ĐỢT ======
-    with manual_input_expander("✏️ Bảng nhập số liệu thực tế (Tổng cọc)"):
-        st.caption("Tổng cọc và Tổng cọc khác được lưu theo từng đợt học thử và dùng chung khi thay đổi bộ lọc.")
-        dot_manual_cols = [TRIAL_DEPOSIT_FIELD, OTHER_DEPOSIT_FIELD]
+    # ====== BẢNG NHẬP LIỆU THEO ĐỢT ======
+    with manual_input_expander("✏️ Bảng nhập số liệu thực tế (Tổng cọc, Data order)"):
+        st.caption("Tổng cọc, Tổng cọc khác và Data order được lưu theo từng đợt học thử và dùng chung khi thay đổi bộ lọc.")
+        dot_manual_cols = [TRIAL_DEPOSIT_FIELD, OTHER_DEPOSIT_FIELD, DATA_ORDER_FIELD]
         dot_manual_df, manual_hash = render_dot_manual_inputs(
             "Số liệu theo đợt",
             dot_manual_key,
@@ -221,6 +224,7 @@ def render_report_1(
             configure_report1_grid_columns(gb_tvts1)
             for field in (
                 TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_STUDENT_RATIO_FIELD, ADDITIONAL_BILL_FIELD,
+                ACTUAL_ORDER_RATIO_FIELD,
             ):
                 gb_tvts1.configure_column(field, hide=True)
             render_aggrid_report(tvts1_to_show, gb_tvts1, None, f"grid_report_1_tvts1_v9_{manual_hash}")

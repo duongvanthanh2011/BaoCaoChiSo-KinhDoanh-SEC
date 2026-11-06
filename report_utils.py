@@ -19,6 +19,7 @@ from report_1_schema import (
     KPI_HEADERS as R1_KPI_HEADERS, kpi_denominator as r1_kpi_denominator,
     TRIAL_DEPOSIT_FIELD, TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_DEPOSIT_VISIBLE_FIELD,
     OTHER_DEPOSIT_FIELD, TRIAL_STUDENT_RATIO_FIELD, ADDITIONAL_BILL_FIELD,
+    DATA_ORDER_FIELD, ACTUAL_ORDER_RATIO_FIELD,
     TRIAL_DEPOSIT_COLOR_SPEC, KPI_COLOR_HEX,
     kpi_color_labels, kpi_color_tooltip,
 )
@@ -297,22 +298,18 @@ function(params) {
 }
 """)
 
-getter_pct_r2_full = JsCode("""
-function(params) {
-    var totalData = 0, dataOrder = 0;
-    if (params.node && params.node.rowPinned) {
-        totalData = params.data ? (params.data['Tổng data chạy được'] || 0) : 0;
-        dataOrder = params.data ? (params.data['Data order'] || 0) : 0;
-    } else if (params.node && (params.node.group || params.node.footer) && params.node.level === 0) {
-        totalData = params.node.aggData ? (params.node.aggData['Tổng data chạy được'] || 0) : 0;
-        dataOrder = params.node.aggData ? (params.node.aggData['Data order'] || 0) : 0;
-    } else {
-        // Chỉ tính theo từng đợt, không tính riêng cho từng nhóm nguồn
-        return null;
+def dot_order_ratio_getter(total_field):
+    """Getter dùng chung cho tỷ lệ data thực tế/order ở cấp đợt."""
+    return JsCode("""
+    function(params) {
+        var node = params.node;
+        if (!node || (!node.rowPinned && (!(node.group || node.footer) || node.level !== 0))) return null;
+        var data = node.rowPinned ? params.data : node.aggData;
+        var order = Number(data && data['Data order'] || 0);
+        return order > 0 ? Number(data[TOTAL_FIELD] || 0) / order * 100 : 0;
     }
-    return dataOrder > 0 ? (totalData / dataOrder * 100) : 0;
-}
-""")
+    """.replace('TOTAL_FIELD', json.dumps(total_field)))
+
 
 style_pct_r2_full = JsCode("""
 function(params) {
@@ -322,6 +319,14 @@ function(params) {
     return {'backgroundColor':'#ffcccc'};
 }
 """)
+
+
+def configure_dot_order_ratio(gb, total_field):
+    """Dùng chung cột data thực tế/order cho Báo cáo 1 và 2."""
+    gb.configure_column(
+        ACTUAL_ORDER_RATIO_FIELD, valueGetter=dot_order_ratio_getter(total_field),
+        cellStyle=style_pct_r2_full, valueFormatter=pct_formatter, width=160,
+    )
 
 
 # ==========================================
@@ -714,6 +719,7 @@ function(params) {
 
 def render_report_color_legend(report_number):
     """Hiển thị bảng chú giải các ngưỡng màu KPI của Báo cáo 1 hoặc 2."""
+    order_ratio_legend = f'<tr><td>{escape(ACTUAL_ORDER_RATIO_FIELD)}</td><td><span class="legend-swatch green"></span>95% đến 105%</td><td>-</td><td><span class="legend-swatch red"></span>&lt; 95% hoặc &gt; 105%</td></tr>'
     if report_number == 1:
         legend_rows = []
         legend_specs = [
@@ -730,12 +736,11 @@ def render_report_color_legend(report_number):
             legend_rows.append(
                 f'<tr><td>{escape(field)} — Mục tiêu: {escape(str(target))}</td>{cells}</tr>'
             )
+        legend_rows.append(order_ratio_legend)
         rows = ''.join(legend_rows)
         title = "📝 Ghi chú màu KPI - Báo cáo 1"
     elif report_number == 2:
-        rows = """
-            <tr><td>Tỷ lệ data thực tế/data order</td><td><span class="legend-swatch green"></span>95% đến 105%</td><td>-</td><td><span class="legend-swatch red"></span>&lt; 95% hoặc &gt; 105%</td></tr>
-        """
+        rows = order_ratio_legend
         title = "📝 Ghi chú màu KPI - Báo cáo 2"
     else:
         raise ValueError("report_number chỉ hỗ trợ 1 hoặc 2")
@@ -826,7 +831,7 @@ def configure_report1_grid_columns(gb):
         gb.configure_column(field, **options)
 
     # Các cột nhập tay (ẩn khỏi bảng, chỉ dùng để tổng hợp theo đợt).
-    for field in (TRIAL_DEPOSIT_FIELD, OTHER_DEPOSIT_FIELD):
+    for field in (TRIAL_DEPOSIT_FIELD, OTHER_DEPOSIT_FIELD, DATA_ORDER_FIELD):
         gb.configure_column(field, aggFunc="sum", hide=True, suppressColumnsToolPanel=True)
     gb.configure_column(TRIAL_DEPOSIT_VISIBLE_FIELD, hide=True, suppressColumnsToolPanel=True)
 
@@ -946,6 +951,8 @@ def configure_report1_grid_columns(gb):
         width=150,
     )
 
+    configure_dot_order_ratio(gb, R1_TOTAL)
+
 
 def configure_report2_grid_columns(gb, count_cols=None):
     """
@@ -996,13 +1003,7 @@ def configure_report2_grid_columns(gb, count_cols=None):
         width=160
     )
 
-    gb.configure_column(
-        "Tỷ lệ data thực tế/data order",
-        valueGetter=getter_pct_r2_full,
-        cellStyle=style_pct_r2_full,
-        valueFormatter=pct_formatter,
-        width=160
-    )
+    configure_dot_order_ratio(gb, "Tổng data chạy được")
 
 
 def configure_report3_grid_columns(gb):
