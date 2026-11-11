@@ -305,6 +305,7 @@ def dot_order_ratio_getter(total_field):
         var node = params.node;
         if (!node || (!node.rowPinned && (!(node.group || node.footer) || node.level !== 0))) return null;
         var data = node.rowPinned ? params.data : node.aggData;
+        if (node.rowPinned && data && data._r1_header_note_row) return null;
         var order = Number(data && data['Data order'] || 0);
         return order > 0 ? Number(data[TOTAL_FIELD] || 0) / order * 100 : 0;
     }
@@ -792,9 +793,62 @@ def _report_1_color_style(low, high, direction):
 def configure_report1_grid_columns(gb):
     """Cấu hình các cột hiển thị cho Báo cáo 1."""
     note_row_marker = '_r1_header_note_row'
+    bold_note_parts = {
+        R1_TOTAL: ('*',),
+        'Đang trao đổi': ('L4',),
+        'Tiềm năng trước học thử': ('L5', 'L7'),
+        'Đã cọc chốt': ('L8+L9+L10',),
+        'Data sai số, sai đối tượng, SEC từ chối, TĐKTC': ('L13+L14+L15+L16',),
+    }
+    note_renderer = JsCode("""
+    class CellRenderer {
+        init(params) {
+            this.eGui = document.createElement('span');
+            this.eGui.style.whiteSpace = 'normal';
+            var value = params.valueFormatted == null ? params.value : params.valueFormatted;
+            var text = value == null ? '' : String(value);
+            if (!params.data || !params.data[NOTE_ROW_MARKER]) {
+                this.eGui.textContent = text;
+                return;
+            }
+
+            var parts = BOLD_PARTS[params.colDef.field] || [];
+            var matches = [];
+            if (parts.indexOf('*') !== -1) {
+                matches.push({start: 0, end: text.length});
+            } else {
+                parts.forEach(function(part) {
+                    var start = text.indexOf(part);
+                    while (start !== -1) {
+                        matches.push({start: start, end: start + part.length});
+                        start = text.indexOf(part, start + part.length);
+                    }
+                });
+            }
+            matches.sort(function(a, b) { return a.start - b.start; });
+
+            var cursor = 0;
+            matches.forEach(function(match) {
+                if (match.start < cursor) return;
+                this.eGui.appendChild(document.createTextNode(text.slice(cursor, match.start)));
+                var bold = document.createElement('strong');
+                bold.textContent = text.slice(match.start, match.end);
+                this.eGui.appendChild(bold);
+                cursor = match.end;
+            }, this);
+            this.eGui.appendChild(document.createTextNode(text.slice(cursor)));
+        }
+        getGui() { return this.eGui; }
+    }
+    """.replace('NOTE_ROW_MARKER', json.dumps(note_row_marker))
+        .replace('BOLD_PARTS', json.dumps(bold_note_parts, ensure_ascii=False)))
     gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
     for field in (R1_TOTAL, R1_BASE):
-        gb.configure_column(field, aggFunc='sum', width=150, cellDataType=False)
+        gb.configure_column(
+            field, aggFunc='sum', width=150, cellDataType=False,
+            wrapText=True, autoHeight=True,
+            **({'cellRenderer': note_renderer} if field in bold_note_parts else {}),
+        )
     for field, _, target, low, high, direction in R1_RATIOS:
         numerator = r1_count_field(field)
         denominator = r1_kpi_denominator(field)
@@ -830,7 +884,10 @@ def configure_report1_grid_columns(gb):
         """.replace('NUMERATOR', json.dumps(numerator))
             .replace('NOTE_ROW_MARKER', json.dumps(note_row_marker)))
         options = dict(valueGetter=getter, valueFormatter=formatter,
-                       headerName=R1_KPI_HEADERS[field], width=160)
+                       headerName=R1_KPI_HEADERS[field], width=160,
+                       wrapText=True, autoHeight=True)
+        if field in bold_note_parts:
+            options['cellRenderer'] = note_renderer
         if target is not None:
             options.update(cellStyle=_report_1_color_style(low, high, direction),
                            headerTooltip=kpi_color_tooltip(target, low, high, direction))
@@ -852,6 +909,7 @@ def configure_report1_grid_columns(gb):
 
         var data = !node.rowPinned && (node.group || node.footer) ? node.aggData : params.data;
         if (!data) return null;
+        if (node.rowPinned && data._r1_header_note_row) return null;
         var count = Number(data[TRIAL_DEPOSIT_COL] || 0);
         var base = Number(data[BASE_COL] || 0);
         return base > 0 ? (count / base * 100) : null;
@@ -869,6 +927,7 @@ def configure_report1_grid_columns(gb):
 
         var data = !node.rowPinned && (node.group || node.footer) ? node.aggData : params.data;
         if (!data) return '';
+        if (node.rowPinned && data._r1_header_note_row) return '';
         var count = Number(data[TRIAL_DEPOSIT_COL] || 0);
         var pct = Number.isFinite(params.value) ? params.value.toFixed(2) + '%' : '—';
         return count + ' (' + pct + ')';
@@ -901,6 +960,7 @@ def configure_report1_grid_columns(gb):
 
         var data = !node.rowPinned && (node.group || node.footer) ? node.aggData : params.data;
         if (!data) return null;
+        if (node.rowPinned && data._r1_header_note_row) return null;
         var count = Number(data[OTHER_DEPOSIT_COL] || 0) + Number(data[CLOSED_COUNT_COL] || 0);
         var base = Number(data[BASE_COL] || 0);
         return base > 0 ? count / base * 100 : null;
@@ -918,6 +978,7 @@ def configure_report1_grid_columns(gb):
 
         var data = !node.rowPinned && (node.group || node.footer) ? node.aggData : params.data;
         if (!data) return '';
+        if (node.rowPinned && data._r1_header_note_row) return '';
         var count = Number(data[OTHER_DEPOSIT_COL] || 0) + Number(data[CLOSED_COUNT_COL] || 0);
         var pct = Number.isFinite(params.value) ? params.value.toFixed(2) + '%' : '—';
         return count + ' (' + pct + ')';
@@ -942,6 +1003,7 @@ def configure_report1_grid_columns(gb):
 
         var data = !node.rowPinned && (node.group || node.footer) ? node.aggData : params.data;
         if (!data) return null;
+        if (node.rowPinned && data._r1_header_note_row) return null;
         var closed = Number(data[CLOSED_COUNT_COL] || 0);
         var totalDeposit = Number(data[TRIAL_DEPOSIT_COL] || 0);
         var otherDeposit = Number(data[OTHER_DEPOSIT_COL] || 0);

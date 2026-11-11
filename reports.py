@@ -85,6 +85,7 @@ REPORT_1_HEADER_NOTES = {
     'Data sai số, sai đối tượng, SEC từ chối, TĐKTC': 'L13+L14+L15+L16',
 }
 REPORT_1_NOTE_ROW_MARKER = '_r1_header_note_row'
+
 from report_6_schema import (
     REPORT_6_CHANNEL_FACEBOOK,
     REPORT_6_CHANNEL_GOOGLE,
@@ -118,6 +119,7 @@ from manual_input_state import (
     get_all_drafts_for_report,
 )
 from manual_input_repository import get_repository
+
 
 # Re-export để app.py import trực tiếp không bị lỗi
 __all__ = [
