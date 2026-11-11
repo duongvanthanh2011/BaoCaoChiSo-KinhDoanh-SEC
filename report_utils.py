@@ -791,9 +791,10 @@ def _report_1_color_style(low, high, direction):
 
 def configure_report1_grid_columns(gb):
     """Cấu hình các cột hiển thị cho Báo cáo 1."""
+    note_row_marker = '_r1_header_note_row'
     gb.configure_default_column(wrapHeaderText=True, autoHeaderHeight=True)
     for field in (R1_TOTAL, R1_BASE):
-        gb.configure_column(field, aggFunc='sum', width=150)
+        gb.configure_column(field, aggFunc='sum', width=150, cellDataType=False)
     for field, _, target, low, high, direction in R1_RATIOS:
         numerator = r1_count_field(field)
         denominator = r1_kpi_denominator(field)
@@ -804,6 +805,7 @@ def configure_report1_grid_columns(gb):
             var data = node && !node.rowPinned && (node.group || node.footer)
                 ? node.aggData : params.data;
             if (!data) return null;
+            if (node && node.rowPinned && data[NOTE_ROW_MARKER]) return data[FIELD];
             var count = Number(data[NUMERATOR] || 0);
             var base = Number(data[BASE] || 0);
             if (ZERO && count === 0) return 0;
@@ -811,6 +813,8 @@ def configure_report1_grid_columns(gb):
         }
         """.replace('NUMERATOR', json.dumps(numerator))
             .replace('BASE', json.dumps(denominator))
+            .replace('NOTE_ROW_MARKER', json.dumps(note_row_marker))
+            .replace('FIELD', json.dumps(field))
             .replace('ZERO', json.dumps(direction == 'zero')))
         formatter = JsCode("""
         function(params) {
@@ -818,11 +822,13 @@ def configure_report1_grid_columns(gb):
             var data = node && !node.rowPinned && (node.group || node.footer)
                 ? node.aggData : params.data;
             if (!data) return '';
+            if (node && node.rowPinned && data[NOTE_ROW_MARKER]) return params.value || '';
             var count = Number(data[NUMERATOR] || 0);
             var pct = Number.isFinite(params.value) ? params.value.toFixed(2) + '%' : '—';
             return count + ' (' + pct + ')';
         }
-        """.replace('NUMERATOR', json.dumps(numerator)))
+        """.replace('NUMERATOR', json.dumps(numerator))
+            .replace('NOTE_ROW_MARKER', json.dumps(note_row_marker)))
         options = dict(valueGetter=getter, valueFormatter=formatter,
                        headerName=R1_KPI_HEADERS[field], width=160)
         if target is not None:

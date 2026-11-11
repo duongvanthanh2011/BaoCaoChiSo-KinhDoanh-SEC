@@ -73,6 +73,18 @@ from report_5_schema import (
     REPORT_5_TC_ROWS,
     FIELD_TIME,
 )
+
+REPORT_1_HEADER_NOTES = {
+    'Tổng data đã chia': 'L1+L1.1+L2+L3+L4+L5+L6+L7+L8+L9+L10+L11+L12+L13+L14+L15+L16+L17',
+    'Tổng data đã chia (trừ sai số, sai đối tượng)': 'Tổng data đã chia - L14 - L15',
+    'Chưa gọi CVHT': 'Không còn data tồn ở L1',
+    'Đang trao đổi': 'L4+L5+L6+L7+L8+L9+L10',
+    'Tiềm năng trước học thử': 'L5+L6+L7+L8+L9+L10',
+    'Tiềm năng sau học thử': 'L7+L8+L9+L10',
+    'Đã cọc chốt': 'L8+L9+L10',
+    'Data sai số, sai đối tượng, SEC từ chối, TĐKTC': 'L13+L14+L15+L16',
+}
+REPORT_1_NOTE_ROW_MARKER = '_r1_header_note_row'
 from report_6_schema import (
     REPORT_6_CHANNEL_FACEBOOK,
     REPORT_6_CHANNEL_GOOGLE,
@@ -193,15 +205,23 @@ def render_report_1(
     gb.configure_column("Người phụ trách", width=160, pinned="left")
     configure_report1_grid_columns(gb)
 
-    pinned_row = None
+    pinned_total_row = None
     if not df_to_show.empty:
-        pinned_row = aggregate_report_1_rows(
+        pinned_total_row = aggregate_report_1_rows(
             df_to_show, df_to_show['Thời gian xuất data'].iloc[0],
             advisor_label='📊 TỔNG DATA XUẤT RA',
             show_trial_deposit=True,
         )
+    note_row = {
+        REPORT_1_NOTE_ROW_MARKER: True,
+        'Thời gian xuất data': 'Ghi chú',
+        **REPORT_1_HEADER_NOTES,
+    }
+    pinned_rows = [note_row]
+    if pinned_total_row is not None:
+        pinned_rows.append(pinned_total_row)
     render_report_color_legend(1)
-    render_aggrid_report(df_to_show, gb, pinned_row, f"grid_report_1_v9_{manual_hash}")
+    render_aggrid_report(df_to_show, gb, pinned_rows, f"grid_report_1_v9_{manual_hash}")
 
     # TVTS 1 là bảng riêng để không bị cộng vào group footer/tổng của Báo cáo 1 chính.
     has_tvts1_data = isinstance(tvts1_result, pd.DataFrame) and not tvts1_result.empty
@@ -227,7 +247,10 @@ def render_report_1(
                 ACTUAL_ORDER_RATIO_FIELD,
             ):
                 gb_tvts1.configure_column(field, hide=True)
-            render_aggrid_report(tvts1_to_show, gb_tvts1, None, f"grid_report_1_tvts1_v9_{manual_hash}")
+            render_aggrid_report(
+                tvts1_to_show, gb_tvts1, [note_row],
+                f"grid_report_1_tvts1_v9_{manual_hash}",
+            )
 
     df_excel = prepare_excel_report_1(df_to_show)
     if has_tvts1_data:
