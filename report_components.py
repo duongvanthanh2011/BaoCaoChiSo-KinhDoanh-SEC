@@ -548,9 +548,11 @@ def render_aggrid_report(
     grid_options["suppressAggFuncInHeader"] = True
 
     if pinned_row is not None:
-        grid_options["pinnedTopRowData"] = (
-            pinned_row if isinstance(pinned_row, list) else [pinned_row]
-        )
+        pinned_rows = pinned_row if isinstance(pinned_row, list) else [pinned_row]
+        grid_options["pinnedTopRowData"] = [
+            {**row, "::auto_unique_id::": f"pinned-top-{index}"}
+            for index, row in enumerate(pinned_rows)
+        ]
 
     AgGrid(
         df,
