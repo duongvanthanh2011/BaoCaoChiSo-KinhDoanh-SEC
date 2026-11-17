@@ -1,6 +1,9 @@
 """Schema duy nhất của Báo cáo 6: MKT theo vị trí địa lý."""
 
-REPORT_6_SCHEMA_VERSION = 2
+from report_1_schema import BILL_RELATION_IDS
+
+REPORT_6_SCHEMA_VERSION = 3
+REPORT_6_BILL_RELATION_IDS = BILL_RELATION_IDS  # L8 + L9 + L10, đồng bộ với BC1, BC3, BC4, BC5
 
 REPORT_6_CHANNEL_FACEBOOK = "facebook"
 REPORT_6_CHANNEL_GOOGLE = "google"

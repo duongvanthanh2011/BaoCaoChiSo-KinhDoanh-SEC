@@ -457,13 +457,11 @@ class CellRenderer {
 """)
 
 
+from data_processing import SHARED_AGE_ALERT_RULES
+
 REPORT_3_AGE_DATA_ALERT_RULES = {
-    'Học sinh cấp 2': (10, '#ffcccc'),
-    'Học sinh cấp 3': (10, '#ffcccc'),
-    'Phụ huynh có con C2, C3': (10, '#ffcccc'),
-    'Sinh Viên': (15, '#ccffcc'),
-    'Người đi làm từ 22 - 35 tuổi': (15, '#ccffcc'),
-    'Người đi làm từ 35 - 50 Tuổi': (30, '#ccffcc'),
+    group: (int(threshold) if float(threshold).is_integer() else threshold, color)
+    for group, (threshold, color) in SHARED_AGE_ALERT_RULES.items()
 }
 
 
@@ -1084,6 +1082,7 @@ def configure_report3_grid_columns(gb):
 
     from data_processing import (
         REPORT_3_AGE_GROUPS,
+        REPORT_3_CONSOLIDATED_COLUMNS,
         REPORT_3_SCHOOL_WORKER_COLUMN,
         REPORT_3_STUDENT_YOUNG_COLUMN,
         REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
@@ -1102,11 +1101,7 @@ def configure_report3_grid_columns(gb):
             'headerName': 'Nguồn', 'field': 'Nguồn', 'width': 200, 'pinned': 'left',
         },
     }
-    groups = REPORT_3_AGE_GROUPS + ['TỔNG'] + [
-        REPORT_3_STUDENT_YOUNG_COLUMN,
-        REPORT_3_SCHOOL_WORKER_COLUMN,
-        REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
-    ]
+    groups = REPORT_3_AGE_GROUPS + ['TỔNG'] + REPORT_3_CONSOLIDATED_COLUMNS
 
     style_by_group = {
         REPORT_3_STUDENT_YOUNG_COLUMN: style_r3_at_least_80_green,

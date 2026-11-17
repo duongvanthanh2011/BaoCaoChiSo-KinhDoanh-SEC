@@ -9,6 +9,8 @@ BASE_FIELD = 'Tổng data đã chia (trừ sai số, sai đối tượng)'
 # Tổng gồm L1..L17 và L1.1 (57), không gồm L0 (1).
 ASSIGNED_IDS = (16, 57, 39, 58, 23, 21, 59, 60, 15, 51, 6, 52, 32, 45, 22, 41, 44, 13)
 INVALID_IDS = (22, 41)
+BILL_RELATION_IDS = (15, 51, 6)  # L8 + L9 + L10 (Đã cọc chốt / Bills dùng chung toàn bộ báo cáo)
+ERROR_RELATION_IDS = (45, 22, 41, 44)  # L13 + L14 + L15 + L16
 ERROR_FIELD = 'Data sai số, sai đối tượng, SEC từ chối, TĐKTC'
 NEGATIVE_ATTITUDE_FIELD = 'Data thái độ k tích cực'
 NEGATIVE_ATTITUDE_RELATION_IDS = (45,)  # L13
@@ -19,8 +21,8 @@ KPI_SPECS = (
     ('Đang trao đổi', (23, 21, 59, 60, 15, 51, 6), '60% (±5%)', 55, 60, 'higher'),
     ('Tiềm năng trước học thử', (21, 59, 60, 15, 51, 6), '30% (±5%)', 25, 30, 'higher'),
     ('Tiềm năng sau học thử', (60, 15, 51, 6), '15% (±3%)', 12, 15, 'higher'),
-    ('Đã cọc chốt', (15, 51, 6), '12% (±2%)', 10, 12, 'higher'),
-    (ERROR_FIELD, (45, 22, 41, 44), '6%–8%', 6, 8, 'lower'),
+    ('Đã cọc chốt', BILL_RELATION_IDS, '12% (±2%)', 10, 12, 'higher'),
+    (ERROR_FIELD, ERROR_RELATION_IDS, '6%–8%', 6, 8, 'lower'),
 )
 RATIO_SPECS = (*KPI_SPECS, (NEGATIVE_ATTITUDE_FIELD, NEGATIVE_ATTITUDE_RELATION_IDS, None, None, None, None))
 KPI_HEADERS = {

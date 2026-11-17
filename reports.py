@@ -497,7 +497,7 @@ def render_report_3(result_3):
         df_to_show,
         gb,
         pinned_row,
-        "grid_report_3_v7",
+        "grid_report_3_v8",
         custom_css=REPORT_3_GRID_CUSTOM_CSS,
     )
 
@@ -522,9 +522,9 @@ def render_report_4(results_4):
         return
 
     tables_config = [
-        ("#### I. Bảng nguồn Onl", results_4.get('onl'), "grid_report_4_onl_v1"),
-        ("#### II. Bảng nguồn Off", results_4.get('off'), "grid_report_4_off_v1"),
-        ("#### III. Bảng tổng nguồn (Onl + Off)", results_4.get('tong'), "grid_report_4_tong_v1"),
+        ("#### I. Bảng nguồn Onl", results_4.get('onl'), "grid_report_4_onl_v2"),
+        ("#### II. Bảng nguồn Off", results_4.get('off'), "grid_report_4_off_v2"),
+        ("#### III. Bảng tổng nguồn (Onl + Off)", results_4.get('tong'), "grid_report_4_tong_v2"),
     ]
 
     all_empty = all(df is None or df.empty for _, df, _ in tables_config)
@@ -660,7 +660,7 @@ def render_report_5(results_5, selected_sessions=None, repository=None):
             &bull; Bảng <b>Facebook</b> gồm nguồn Facebook thường, Facebook CV OFF và Facebook Sinh viên Offline; bảng <b>Tổng Facebook + Google</b> cũng bao gồm phần Sinh viên Offline này.<br>
             &bull; <b>Facebook – Data Không Gọi</b> tổng hợp cả nguồn cũ có hậu tố <b>KOG1–KOG6</b> và nguồn mới bắt đầu bằng <b>ADS</b>, kết thúc <b>DATA KHÔNG GỌI KOG FB1–FB6</b>; tách khỏi ba bảng Facebook, Google và Tổng Facebook + Google; vẫn giữ trọng số nguồn 1/N.<br>
             &bull; Bảng Data Không Gọi chỉ có số liệu CRM (Data, Bills, sai số, độ tuổi), <b>không phân bổ chi phí</b> do chi phí hiện chỉ được nhập chung theo Facebook/Google × TC.<br>
-            &bull; <b>Quy tắc cảnh báo màu tỉ lệ độ tuổi:</b> Báo đỏ khi Học sinh C2, C3, Phụ huynh &gt; 10%; Báo xanh khi Sinh viên, Người đi làm 22–35 tuổi &gt; 15%; Người đi làm 35–50 tuổi &gt; 30%.<br>
+            &bull; <b>Quy tắc cảnh báo màu tỉ lệ độ tuổi:</b> Báo đỏ khi Học sinh cấp 3, Phụ huynh đăng ký cho con cấp 2 - 3 &gt; 10%; Báo xanh khi Sinh viên, Người đi làm 22–35 tuổi &gt; 15%; Người đi làm 36–50 tuổi &gt; 30%.<br>
             &bull; Bảng hỗ trợ cuộn ngang để theo dõi toàn bộ các chỉ số chi tiết.
         </div>
         """,
@@ -668,10 +668,10 @@ def render_report_5(results_5, selected_sessions=None, repository=None):
     )
 
     tables_config = [
-        ("#### I. Báo cáo Facebook", enriched_tables.get(REPORT_5_CHANNEL_FACEBOOK), f"grid_report_5_facebook_v3_{manual_hash}", True),
-        ("#### II. Báo cáo Google", enriched_tables.get(REPORT_5_CHANNEL_GOOGLE), f"grid_report_5_google_v3_{manual_hash}", True),
-        ("#### III. Báo cáo Tổng Facebook + Google", enriched_tables.get(REPORT_5_CHANNEL_TOTAL), f"grid_report_5_tong_v3_{manual_hash}", True),
-        ("#### IV. Facebook – Data Không Gọi", enriched_tables.get(REPORT_5_CHANNEL_DATA_KHONG_GOI), f"grid_report_5_data_khong_goi_v1_{manual_hash}", False),
+        ("#### I. Báo cáo Facebook", enriched_tables.get(REPORT_5_CHANNEL_FACEBOOK), f"grid_report_5_facebook_v4_{manual_hash}", True),
+        ("#### II. Báo cáo Google", enriched_tables.get(REPORT_5_CHANNEL_GOOGLE), f"grid_report_5_google_v4_{manual_hash}", True),
+        ("#### III. Báo cáo Tổng Facebook + Google", enriched_tables.get(REPORT_5_CHANNEL_TOTAL), f"grid_report_5_tong_v4_{manual_hash}", True),
+        ("#### IV. Facebook – Data Không Gọi", enriched_tables.get(REPORT_5_CHANNEL_DATA_KHONG_GOI), f"grid_report_5_data_khong_goi_v2_{manual_hash}", False),
     ]
 
     all_empty = all(df is None or df.empty for _, df, _, _ in tables_config)
@@ -735,9 +735,9 @@ def render_report_6(results_6):
     )
 
     tables = [
-        ("#### I. MKT Vị trí – Facebook", results_6.get(REPORT_6_CHANNEL_FACEBOOK), "grid_report_6_facebook_v1"),
-        ("#### II. MKT Vị trí – Google", results_6.get(REPORT_6_CHANNEL_GOOGLE), "grid_report_6_google_v1"),
-        ("#### III. MKT Vị trí – Tổng Facebook + Google", results_6.get(REPORT_6_CHANNEL_TOTAL), "grid_report_6_tong_v1"),
+        ("#### I. MKT Vị trí – Facebook", results_6.get(REPORT_6_CHANNEL_FACEBOOK), "grid_report_6_facebook_v2"),
+        ("#### II. MKT Vị trí – Google", results_6.get(REPORT_6_CHANNEL_GOOGLE), "grid_report_6_google_v2"),
+        ("#### III. MKT Vị trí – Tổng Facebook + Google", results_6.get(REPORT_6_CHANNEL_TOTAL), "grid_report_6_tong_v2"),
     ]
     for title, df, key in tables:
         st.markdown(title)

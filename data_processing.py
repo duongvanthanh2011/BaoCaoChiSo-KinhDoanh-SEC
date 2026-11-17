@@ -249,78 +249,142 @@ def _classify_nguon(label):
 
 
 # ==========================================
-# PHÂN LOẠI NHÓM TUỔI TỪ TRƯỜNG DESCRIPTION
+# PHÂN LOẠI NHÓM TUỔI DÙNG CHUNG (BC3 & BC5)
 # ==========================================
 
+AGE_GROUP_HIGH_SCHOOL_3 = "Học sinh cấp 3"
+AGE_GROUP_PARENT = "Phụ huynh đăng ký cho con cấp 2 - 3"
+AGE_GROUP_STUDENT = "Sinh viên"
+AGE_GROUP_WORKER_22_35 = "Người đi làm từ 22 - 35 tuổi"
+AGE_GROUP_WORKER_36_50 = "Người đi làm từ 36 - 50 tuổi"
+AGE_GROUP_OTHER = "Nhóm Khác"
+
 AGE_GROUPS = [
-    "Học sinh cấp 2",
-    "Học sinh cấp 3",
-    "Sinh Viên",
-    "Người đi làm dưới 35 Tuổi",
-    "Người đi làm từ 35 - 50 Tuổi",
-    "Độ tuổi khác",
-    "Chưa điền",
+    AGE_GROUP_HIGH_SCHOOL_3,
+    AGE_GROUP_PARENT,
+    AGE_GROUP_STUDENT,
+    AGE_GROUP_WORKER_22_35,
+    AGE_GROUP_WORKER_36_50,
+    AGE_GROUP_OTHER,
 ]
 
-REPORT_3_PARENT_COLUMN = "Phụ huynh có con C2, C3"
-REPORT_3_WORKER_22_35_COLUMN = "Người đi làm từ 22 - 35 tuổi"
-REPORT_3_AGE_GROUPS = [
-    "Học sinh cấp 2",
-    "Học sinh cấp 3",
-    "Sinh Viên",
-    REPORT_3_PARENT_COLUMN,
-    REPORT_3_WORKER_22_35_COLUMN,
-    "Người đi làm từ 35 - 50 Tuổi",
-    "Độ tuổi khác",
-    "Chưa điền",
-]
+AGE_ALERT_COLOR_RED = "#ffcccc"
+AGE_ALERT_COLOR_GREEN = "#ccffcc"
+SHARED_AGE_ALERT_RULES = {
+    AGE_GROUP_HIGH_SCHOOL_3: (10.0, AGE_ALERT_COLOR_RED),
+    AGE_GROUP_PARENT: (10.0, AGE_ALERT_COLOR_RED),
+    AGE_GROUP_STUDENT: (15.0, AGE_ALERT_COLOR_GREEN),
+    AGE_GROUP_WORKER_22_35: (15.0, AGE_ALERT_COLOR_GREEN),
+    AGE_GROUP_WORKER_36_50: (30.0, AGE_ALERT_COLOR_GREEN),
+}
+
+REPORT_3_PARENT_COLUMN = AGE_GROUP_PARENT
+REPORT_3_WORKER_22_35_COLUMN = AGE_GROUP_WORKER_22_35
+REPORT_3_WORKER_36_50_COLUMN = AGE_GROUP_WORKER_36_50
+REPORT_3_STUDENT_COLUMN = AGE_GROUP_STUDENT
+REPORT_3_OTHER_COLUMN = AGE_GROUP_OTHER
+REPORT_3_AGE_GROUPS = list(AGE_GROUPS)
+
 REPORT_3_STUDENT_YOUNG_COLUMN = "Nhóm SV + Người đi làm từ 22 - 35 tuổi"
-REPORT_3_SCHOOL_WORKER_COLUMN = "HS C2 + C3 + Người đi làm từ 35 - 50 Tuổi"
+REPORT_3_SCHOOL_WORKER_COLUMN = "HS C3 + Người đi làm từ 36 - 50 tuổi"
 REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN = (
-    "SV + Người đi làm từ 22 - 35 tuổi + Chưa điền"
+    "SV + Người đi làm từ 22 - 35 tuổi + Nhóm Khác"
 )
-REPORT_3_CONSOLIDATED_COLUMNS = [
-    REPORT_3_STUDENT_YOUNG_COLUMN,
-    REPORT_3_SCHOOL_WORKER_COLUMN,
-    REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
-]
-
-# Lookup dict: lowercase → tên chuẩn trong AGE_GROUPS (dùng cho so sánh case-insensitive)
-_AGE_GROUP_LOOKUP = {g.lower(): g for g in AGE_GROUPS}
-_UNFILLED_AGE_ALIASES = {
-    "sale chưa điền & điền trùng",
+REPORT_3_CONSOLIDATED_GROUP_COMPONENTS = {
+    REPORT_3_STUDENT_YOUNG_COLUMN: (
+        AGE_GROUP_STUDENT,
+        AGE_GROUP_WORKER_22_35,
+    ),
+    REPORT_3_SCHOOL_WORKER_COLUMN: (
+        AGE_GROUP_HIGH_SCHOOL_3,
+        AGE_GROUP_WORKER_36_50,
+    ),
+    REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN: (
+        AGE_GROUP_STUDENT,
+        AGE_GROUP_WORKER_22_35,
+        AGE_GROUP_OTHER,
+    ),
 }
-_REPORT_3_AGE_ALIASES = {
-    REPORT_3_PARENT_COLUMN.lower(): REPORT_3_PARENT_COLUMN,
-    REPORT_3_WORKER_22_35_COLUMN.lower(): REPORT_3_WORKER_22_35_COLUMN,
-    "người đi làm dưới 35 tuổi": REPORT_3_WORKER_22_35_COLUMN,
-    "người đi làm từ dưới 35 tuổi": REPORT_3_WORKER_22_35_COLUMN,
+REPORT_3_CONSOLIDATED_COLUMNS = list(REPORT_3_CONSOLIDATED_GROUP_COMPONENTS)
+
+
+def _normalize_age_label(value):
+    """Chuẩn hóa nhãn tuổi (chữ hoa, bỏ dấu, gộp ký tự phân cách thành khoảng trắng)."""
+    if not isinstance(value, str):
+        return ""
+    normalized = unicodedata.normalize("NFD", value.upper()).replace("Đ", "D")
+    normalized = "".join(
+        char for char in normalized if unicodedata.category(char) != "Mn"
+    )
+    return re.sub(r"[^A-Z0-9]+", " ", normalized).strip()
+
+
+_PARENT_GROUP_PREFIXES = (
+    "PHU HUYNH DANG KY CHO CON",
+    "PHU HUYNH CO CON",
+)
+_PARENT_ALLOWED_SUFFIX_TOKENS = {"C2", "C3", "CAP", "2", "3", "VA", "TU", "DEN"}
+
+
+def _is_parent_age_group(normalized):
+    """Nhận diện nhãn phụ huynh (cả nhãn mới 'đăng ký cho con cấp 2 - 3' và nhãn cũ 'có con C2, C3')."""
+    if not normalized:
+        return False
+    for prefix in _PARENT_GROUP_PREFIXES:
+        if normalized.startswith(prefix + " "):
+            suffix_tokens = normalized[len(prefix):].strip().split()
+            if not suffix_tokens or not set(suffix_tokens).issubset(_PARENT_ALLOWED_SUFFIX_TOKENS):
+                return False
+            has_c2 = "C2" in suffix_tokens or ("CAP" in suffix_tokens and "2" in suffix_tokens)
+            has_c3 = "C3" in suffix_tokens or ("CAP" in suffix_tokens and "3" in suffix_tokens)
+            return has_c2 and has_c3
+    return False
+
+
+_AGE_GROUP_NORMALIZED_LOOKUP = {
+    "HOC SINH CAP 3": AGE_GROUP_HIGH_SCHOOL_3,
+    "SINH VIEN": AGE_GROUP_STUDENT,
+    "NGUOI DI LAM TU 22 35 TUOI": AGE_GROUP_WORKER_22_35,
+    "NGUOI DI LAM DUOI 35 TUOI": AGE_GROUP_WORKER_22_35,
+    "NGUOI DI LAM TU DUOI 35 TUOI": AGE_GROUP_WORKER_22_35,
+    "NGUOI DI LAM TU 36 50 TUOI": AGE_GROUP_WORKER_36_50,
+    "NGUOI DI LAM TU 35 50 TUOI": AGE_GROUP_WORKER_36_50,
 }
 
-def classify_age_group(description):
+
+def classify_age_group(description, fallback_age_group=None):
     """
-    Phân loại nhóm tuổi từ trường description.
-    So sánh không phân biệt chữ hoa/thường và loại bỏ khoảng trắng hai đầu.
-    Giá trị rỗng đưa vào "Chưa điền"; giá trị không khớp đưa vào "Độ tuổi khác".
+    Phân loại nhóm tuổi dùng chung cho cả Báo cáo 3 và Báo cáo 5.
+    Ưu tiên lấy từ description; nếu trống thì dùng fallback_age_group.
+    Mọi nhãn chưa gán hoặc không khớp với 5 nhóm chính đều quy về 'Nhóm Khác'.
     """
-    if not description or not isinstance(description, str) or not description.strip():
-        return "Chưa điền"
-    desc = description.strip().lower()
-    if desc in _UNFILLED_AGE_ALIASES:
-        return "Chưa điền"
-    canonical = _AGE_GROUP_LOOKUP.get(desc)
-    if canonical:
-        return canonical
-    return "Độ tuổi khác"
+    candidate = (
+        description
+        if isinstance(description, str) and description.strip()
+        else fallback_age_group
+    )
+    normalized = _normalize_age_label(candidate)
+    if not normalized:
+        return AGE_GROUP_OTHER
+    if _is_parent_age_group(normalized):
+        return AGE_GROUP_PARENT
+    return _AGE_GROUP_NORMALIZED_LOOKUP.get(normalized, AGE_GROUP_OTHER)
 
 
-def classify_report_3_age_group(description):
-    """BC3 gộp các nhãn dưới 35 vào nhóm 22–35; giữ nguyên nhóm 35–50."""
-    if isinstance(description, str):
-        normalized = description.strip().lower()
-        if normalized in _REPORT_3_AGE_ALIASES:
-            return _REPORT_3_AGE_ALIASES[normalized]
-    return classify_age_group(description)
+classify_report_3_age_group = classify_age_group
+
+
+def classify_dataframe_age_groups(df):
+    """Phân loại cột Nhóm tuổi thống nhất cho DataFrame từ description và cột Nhóm tuổi dự phòng."""
+    raw_description = df.get("description", pd.Series(index=df.index, dtype=object))
+    fallback_age = df.get("Nhóm tuổi", pd.Series(index=df.index, dtype=object))
+    return pd.Series(
+        [
+            classify_age_group(raw_description.loc[idx], fallback_age.loc[idx])
+            for idx in df.index
+        ],
+        index=df.index,
+    )
 
 # ==========================================
 # PHÂN LOẠI NGUỒN VỚI PRIORITY RULES
@@ -382,7 +446,7 @@ def classify_report_3_source(label):
 # PHÂN LOẠI & MỞ RỘNG NGUỒN CHO BÁO CÁO 4
 # ==========================================
 
-REPORT_4_SCHEMA_VERSION = 3
+REPORT_4_SCHEMA_VERSION = 4
 REPORT_4_STANDARD_ONL_ROWS = [f"{ch} TC{n}" for n in range(1, 7) for ch in ("Facebook", "Google")]
 # ORG và Đã học chỉ là dòng tổng hợp riêng của bảng Onl, không thuộc bảng Tổng.
 REPORT_4_ONL_ROWS = REPORT_4_STANDARD_ONL_ROWS + ["ORG", "Đã học"]
@@ -690,7 +754,7 @@ def transform_dataframe(df, src_ids, type_ids, account_types_list, users_list=No
         df["Nhóm tuổi"] = df["description"].apply(classify_age_group)
     else:
         # Fallback nếu API không trả về description
-        df["Nhóm tuổi"] = "Chưa điền"
+        df["Nhóm tuổi"] = AGE_GROUP_OTHER
     
     # 7. Thêm cột nguồn với trọng số riêng cho Báo cáo 2, 3 và 4.
     source_details = df.get(

@@ -1,13 +1,27 @@
 """
 report_5_schema.py — Nguồn sự thật duy nhất cho cấu trúc Báo cáo 5 (Truyền Thông).
-Tập trung toàn bộ hằng số, danh sách nhóm tuổi, TC, field nội bộ và metadata cột.
-Không phụ thuộc Streamlit hoặc pandas.
+Tập trung toàn bộ hằng số, danh sách nhóm tuổi (dùng chung với BC3), TC, field nội bộ và metadata cột.
 """
 
-REPORT_5_SCHEMA_VERSION = 11
+from data_processing import (
+    AGE_ALERT_COLOR_GREEN,
+    AGE_ALERT_COLOR_RED,
+    AGE_GROUP_HIGH_SCHOOL_3,
+    AGE_GROUP_OTHER,
+    AGE_GROUP_PARENT,
+    AGE_GROUP_STUDENT,
+    AGE_GROUP_WORKER_22_35,
+    AGE_GROUP_WORKER_36_50,
+    AGE_GROUPS,
+    SHARED_AGE_ALERT_RULES,
+)
 
-REPORT_5_BILL_RELATION_IDS = (15, 51, 6)  # L8 + L9 + L10, như Báo cáo 1
-REPORT_5_ERROR_RELATION_IDS = (45, 22, 41, 44)  # L13 + L14 + L15 + L16
+from report_1_schema import BILL_RELATION_IDS, ERROR_RELATION_IDS
+
+REPORT_5_SCHEMA_VERSION = 12
+
+REPORT_5_BILL_RELATION_IDS = BILL_RELATION_IDS  # L8 + L9 + L10, như Báo cáo 1
+REPORT_5_ERROR_RELATION_IDS = ERROR_RELATION_IDS  # L13 + L14 + L15 + L16
 
 REPORT_5_CHANNEL_FACEBOOK = "facebook"
 REPORT_5_CHANNEL_GOOGLE = "google"
@@ -19,57 +33,37 @@ REPORT_5_TC_ROWS = (
     "TC1", "TC2", "TC3", "TC4", "TC5", "TC6"
 )
 
-REPORT_5_PARENT_GROUP = "Phụ huynh có con C2, C3"
-REPORT_5_WORKER_22_35_GROUP = "Người đi làm từ 22 - 35 tuổi"
+REPORT_5_PARENT_GROUP = AGE_GROUP_PARENT
+REPORT_5_WORKER_22_35_GROUP = AGE_GROUP_WORKER_22_35
+REPORT_5_WORKER_36_50_GROUP = AGE_GROUP_WORKER_36_50
+REPORT_5_STUDENT_GROUP = AGE_GROUP_STUDENT
+REPORT_5_OTHER_GROUP = AGE_GROUP_OTHER
 REPORT_5_STUDENT_WORKER_GROUP = "Nhóm SV + Người đi làm từ 22-35 tuổi"
-REPORT_5_SCHOOL_PARENT_GROUP = "HS C2 + C3 + Phụ huynh có con C2, C3"
+REPORT_5_SCHOOL_PARENT_GROUP = "HS C3 + Phụ huynh đăng ký cho con cấp 2 - 3"
 
 # Ngưỡng cảnh báo màu đỏ trên bảng Báo cáo 5. Các giá trị phần trăm trong
 # DataFrame được lưu theo thang 0..100 (ví dụ 7.5 nghĩa là 7.5%).
 REPORT_5_ERROR_PERCENT_RED_THRESHOLD = 7.0
-REPORT_5_COLOR_RED = "#ffcccc"
-REPORT_5_COLOR_GREEN = "#ccffcc"
+REPORT_5_COLOR_RED = AGE_ALERT_COLOR_RED
+REPORT_5_COLOR_GREEN = AGE_ALERT_COLOR_GREEN
 
 # Quy tắc hiển thị màu cho cột 'Tổng tỉ lệ độ tuổi' theo từng nhóm (> ngưỡng thì cảnh báo):
-# - Học sinh cấp 2: >10% báo đỏ
-# - Học sinh cấp 3: >10% báo đỏ
-# - Phụ huynh có con C2, C3: >10% báo đỏ
-# - Sinh Viên: >15% báo xanh
-# - Người đi làm từ 22 - 35 tuổi: >15% báo xanh
-# - Người đi làm từ 35 - 50 Tuổi: >30% báo xanh
-# - Khác: không cảnh báo màu
-REPORT_5_AGE_RATIO_ALERT_RULES = {
-    "Học sinh cấp 2": (10.0, REPORT_5_COLOR_RED),
-    "Học sinh cấp 3": (10.0, REPORT_5_COLOR_RED),
-    REPORT_5_PARENT_GROUP: (10.0, REPORT_5_COLOR_RED),
-    "Sinh Viên": (15.0, REPORT_5_COLOR_GREEN),
-    REPORT_5_WORKER_22_35_GROUP: (15.0, REPORT_5_COLOR_GREEN),
-    "Người đi làm từ 35 - 50 Tuổi": (30.0, REPORT_5_COLOR_GREEN),
-}
+# Dùng chung SHARED_AGE_ALERT_RULES với Báo cáo 3.
+REPORT_5_AGE_RATIO_ALERT_RULES = dict(SHARED_AGE_ALERT_RULES)
 
 # Giữ lại các hằng số cũ để tương thích ngược nếu có import bên ngoài
 REPORT_5_SCHOOL_PARENT_RATIO_RED_THRESHOLD = 10.0
 REPORT_5_SCHOOL_PARENT_GROUPS = (
-    "Học sinh cấp 2",
-    "Học sinh cấp 3",
+    AGE_GROUP_HIGH_SCHOOL_3,
     REPORT_5_PARENT_GROUP,
 )
 
-REPORT_5_AGE_GROUPS = (
-    "Học sinh cấp 2",
-    "Học sinh cấp 3",
-    REPORT_5_PARENT_GROUP,
-    "Sinh Viên",
-    REPORT_5_WORKER_22_35_GROUP,
-    "Người đi làm từ 35 - 50 Tuổi",
-    "Khác",
-)
+REPORT_5_AGE_GROUPS = tuple(AGE_GROUPS)
 
 REPORT_5_CONSOLIDATED_GROUP_COMPONENTS = {
-    REPORT_5_STUDENT_WORKER_GROUP: ("Sinh Viên", REPORT_5_WORKER_22_35_GROUP),
+    REPORT_5_STUDENT_WORKER_GROUP: (AGE_GROUP_STUDENT, REPORT_5_WORKER_22_35_GROUP),
     REPORT_5_SCHOOL_PARENT_GROUP: (
-        "Học sinh cấp 2",
-        "Học sinh cấp 3",
+        AGE_GROUP_HIGH_SCHOOL_3,
         REPORT_5_PARENT_GROUP,
     ),
 }

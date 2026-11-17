@@ -6,9 +6,6 @@ Chứa:
 - Tính toán tỷ lệ phần trăm và cấu trúc dòng Tổng cộng cho xuất Excel
 """
 
-import re
-import unicodedata
-
 import streamlit as st
 import pandas as pd
 from report_utils import (
@@ -20,8 +17,10 @@ from report_utils import (
     CHUA_TRAO_DOI_AUTO_CALL_LABELS,
 )
 from data_processing import (
+    AGE_GROUP_OTHER,
     REPORT_3_AGE_GROUPS,
     REPORT_3_CONSOLIDATED_COLUMNS,
+    REPORT_3_CONSOLIDATED_GROUP_COMPONENTS,
     REPORT_3_SCHOOL_WORKER_COLUMN,
     REPORT_3_STUDENT_YOUNG_COLUMN,
     REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN,
@@ -30,6 +29,7 @@ from data_processing import (
     REPORT_4_SCHEMA_VERSION,
     REPORT_4_OFF_ROWS,
     classify_age_group,
+    classify_dataframe_age_groups,
     classify_report_3_age_group,
     expand_report_3_sources_with_weights,
     expand_report_4_sources_with_weights,
@@ -68,6 +68,7 @@ from report_5_schema import (
 )
 from report_6_schema import (
     REPORT_6_SCHEMA_VERSION,
+    REPORT_6_BILL_RELATION_IDS,
     REPORT_6_CHANNEL_FACEBOOK,
     REPORT_6_CHANNEL_GOOGLE,
     REPORT_6_CHANNEL_TOTAL,
@@ -85,6 +86,7 @@ from report_1_schema import (
     REPORT_1_SCHEMA_VERSION, GROUP_COLUMNS as R1_GROUP_COLUMNS,
     ALL_COLUMNS as R1_ALL_COLUMNS,
     TOTAL_FIELD as R1_TOTAL, BASE_FIELD as R1_BASE, ASSIGNED_IDS, INVALID_IDS,
+    BILL_RELATION_IDS,
     RATIO_SPECS as R1_RATIOS, COUNT_FIELDS as R1_COUNTS,
     count_field as r1_count_field, calculate_percentages as r1_percentages,
     TRIAL_DEPOSIT_FIELD, TRIAL_DEPOSIT_RATIO_FIELD, TRIAL_DEPOSIT_VISIBLE_FIELD,
@@ -96,8 +98,9 @@ from time_utils import format_fetch_time
 
 REPORT_2_ADVISOR_COLUMN = 'Số CVHT đi làm'
 REPORT_2_AVERAGE_COLUMN = 'Data trung bình/ngày/CVHT'
-REPORT_3_SCHEMA_VERSION = 4
-REPORT_3_BILL_RELATION_IDS = (15, 51, 6)  # L8 + L9 + L10
+REPORT_3_SCHEMA_VERSION = 5
+REPORT_3_BILL_RELATION_IDS = BILL_RELATION_IDS  # L8 + L9 + L10
+REPORT_4_BILL_RELATION_IDS = BILL_RELATION_IDS  # L8 + L9 + L10
 COC_COL_SUFFIX = " (Cọc Chốt)"
 
 # Nhóm tư vấn tuyển sinh 1. Lọc theo ID phòng ban, không theo tên hiển thị.
@@ -202,6 +205,11 @@ def add_indicator_columns(df_filtered):
     relation_series = df_filtered["Mối quan hệ"]
     for column_name, labels in indicator_label_map.items():
         df_filtered[column_name] = relation_series.isin(labels).astype(int)
+
+    if "relation_id" in df_filtered.columns:
+        relation_ids = pd.to_numeric(df_filtered["relation_id"], errors="coerce")
+        df_filtered["Data_coc_chot"] = relation_ids.isin(BILL_RELATION_IDS).astype(int)
+        df_filtered["SAI SỐ - SAI ĐỐI TƯỢNG"] = relation_ids.isin(REPORT_5_ERROR_RELATION_IDS).astype(int)
     
     return df_filtered
 
@@ -633,17 +641,17 @@ def prepare_excel_report_2(df_edited, dot_manual_df=None):
 def compute_report_3(df_filtered):
     """
     Tính toán Báo cáo 3: Ma trận Nguồn × Độ tuổi phân theo Đợt học thử với trọng số.
-    Bao gồm 8 nhóm tuổi, TỔNG, 3 nhóm tổng hợp và 12 cột Cọc Chốt tương ứng.
+    Bao gồm các nhóm tuổi chuẩn dùng chung, TỔNG, các nhóm tổng hợp và cột Cọc Chốt tương ứng.
     
     Returns:
         pd.DataFrame với các cột:
         - Thời gian xuất data
         - ĐỢT HỌC THỬ
         - Nguồn
-        - Các nhóm tuổi (8 cột)
+        - Các nhóm tuổi (6 cột)
         - TỔNG
         - Ba nhóm tổng hợp theo yêu cầu nghiệp vụ
-        - 12 cột cọc chốt tương ứng (sẽ ẩn trên AgGrid)
+        - Các cột cọc chốt tương ứng (sẽ ẩn trên AgGrid)
     """
     coc_columns = [
         f"{c}{COC_COL_SUFFIX}"
@@ -673,16 +681,8 @@ def compute_report_3(df_filtered):
     relation_ids = pd.to_numeric(df_report_3["relation_id"], errors="coerce")
     df_report_3["Data_coc_chot"] = relation_ids.isin(REPORT_3_BILL_RELATION_IDS).astype(int)
 
-    # Luôn phân loại lại từ description để session cũ không giữ nhóm tuổi cũ.
-    # Nếu không còn description, chuẩn hóa cột Nhóm tuổi hiện có theo schema mới.
-    if "description" in df_report_3.columns:
-        df_report_3["Nhóm tuổi"] = df_report_3["description"].apply(classify_report_3_age_group)
-    else:
-        age_values = df_report_3.get(
-            "Nhóm tuổi",
-            pd.Series(index=df_report_3.index, dtype=object),
-        )
-        df_report_3["Nhóm tuổi"] = age_values.apply(classify_report_3_age_group)
+    # Luôn phân loại lại từ description và Nhóm tuổi dự phòng theo bộ nhãn chung BC3 & BC5.
+    df_report_3["Nhóm tuổi"] = classify_dataframe_age_groups(df_report_3)
 
     if report_3_source_column not in df_report_3.columns:
         source_details = df_report_3.get(
@@ -695,7 +695,7 @@ def compute_report_3(df_filtered):
 
     expanded_df = expand_weighted_sources(
         df_report_3,
-        extra_columns={"Nhóm tuổi": "Chưa điền"},
+        extra_columns={"Nhóm tuổi": AGE_GROUP_OTHER},
         numeric_columns=["Data_coc_chot"],
         source_weights_column=report_3_source_column,
     )
@@ -722,36 +722,12 @@ def compute_report_3(df_filtered):
     pivot["TỔNG"] = pivot[REPORT_3_AGE_GROUPS].sum(axis=1)
     coc_age_cols = [f"{g}{COC_COL_SUFFIX}" for g in REPORT_3_AGE_GROUPS]
     pivot_coc[f"TỔNG{COC_COL_SUFFIX}"] = pivot_coc[coc_age_cols].sum(axis=1)
-    
-    # Các nhóm tổng hợp mới (thường)
-    pivot[REPORT_3_STUDENT_YOUNG_COLUMN] = (
-        pivot.get("Sinh Viên", 0)
-        + pivot.get("Người đi làm từ 22 - 35 tuổi", 0)
-    )
-    pivot[REPORT_3_SCHOOL_WORKER_COLUMN] = (
-        pivot.get("Học sinh cấp 2", 0)
-        + pivot.get("Học sinh cấp 3", 0)
-        + pivot.get("Người đi làm từ 35 - 50 Tuổi", 0)
-    )
-    pivot[REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN] = (
-        pivot[REPORT_3_STUDENT_YOUNG_COLUMN]
-        + pivot.get("Chưa điền", 0)
-    )
 
-    # Các nhóm tổng hợp mới (Cọc Chốt - cùng công thức trên các cột coc)
-    pivot_coc[f"{REPORT_3_STUDENT_YOUNG_COLUMN}{COC_COL_SUFFIX}"] = (
-        pivot_coc.get(f"Sinh Viên{COC_COL_SUFFIX}", 0)
-        + pivot_coc.get(f"Người đi làm từ 22 - 35 tuổi{COC_COL_SUFFIX}", 0)
-    )
-    pivot_coc[f"{REPORT_3_SCHOOL_WORKER_COLUMN}{COC_COL_SUFFIX}"] = (
-        pivot_coc.get(f"Học sinh cấp 2{COC_COL_SUFFIX}", 0)
-        + pivot_coc.get(f"Học sinh cấp 3{COC_COL_SUFFIX}", 0)
-        + pivot_coc.get(f"Người đi làm từ 35 - 50 Tuổi{COC_COL_SUFFIX}", 0)
-    )
-    pivot_coc[f"{REPORT_3_STUDENT_YOUNG_UNFILLED_COLUMN}{COC_COL_SUFFIX}"] = (
-        pivot_coc[f"{REPORT_3_STUDENT_YOUNG_COLUMN}{COC_COL_SUFFIX}"]
-        + pivot_coc.get(f"Chưa điền{COC_COL_SUFFIX}", 0)
-    )
+    # Các nhóm tổng hợp dẫn xuất từ cấu hình thành phần (không cộng ngược vào TỔNG)
+    for group, components in REPORT_3_CONSOLIDATED_GROUP_COMPONENTS.items():
+        pivot[group] = pivot[list(components)].sum(axis=1)
+        coc_components = [f"{c}{COC_COL_SUFFIX}" for c in components]
+        pivot_coc[f"{group}{COC_COL_SUFFIX}"] = pivot_coc[coc_components].sum(axis=1)
 
     # Ghép 2 pivot lại
     combined = pd.concat([pivot, pivot_coc], axis=1)
@@ -943,10 +919,11 @@ def build_report_4_tables(df_filtered, fetch_time):
         expand_report_4_sources_with_weights
     )
 
-    # Đảm bảo có cột chỉ báo Data_coc_chot
-    if "Data_coc_chot" not in df_calc.columns:
-        relation_series = df_calc.get("Mối quan hệ", pd.Series(index=df_calc.index, dtype=object)).fillna("")
-        df_calc["Data_coc_chot"] = relation_series.isin(COC_CHOT_LABELS).astype(int)
+    # Bill cọc dùng đúng L8 + L9 + L10 (relation_id in (15, 51, 6)) như Báo cáo 1, 3, 5, 6.
+    if "relation_id" not in df_calc.columns:
+        raise ValueError("Dữ liệu thiếu relation_id. Vui lòng tải lại dữ liệu Getfly.")
+    relation_ids = pd.to_numeric(df_calc["relation_id"], errors="coerce")
+    df_calc["Data_coc_chot"] = relation_ids.isin(REPORT_4_BILL_RELATION_IDS).astype(int)
 
     # Expand từng bản ghi theo nguồn khớp và trọng số
     records = []
@@ -1114,62 +1091,8 @@ def finalize_report_5_metrics(frame):
     return df[get_report_5_fields()]
 
 
-def _normalize_report_5_age_label(value):
-    """Chuẩn hóa nhãn tuổi cục bộ cho BC5, không làm thay đổi schema dùng chung."""
-    if not isinstance(value, str):
-        return ""
-    normalized = unicodedata.normalize("NFD", value.upper()).replace("Đ", "D")
-    normalized = "".join(
-        char for char in normalized if unicodedata.category(char) != "Mn"
-    )
-    return re.sub(r"[^A-Z0-9]+", " ", normalized).strip()
-
-
-_REPORT_5_PARENT_GROUP_NORMALIZED = _normalize_report_5_age_label(REPORT_5_PARENT_GROUP)
-
-
-def _is_report_5_parent_group(value):
-    """Nhận diện các cách ghi tương đương của phụ huynh có con C2 và C3."""
-    normalized = _normalize_report_5_age_label(value)
-    if normalized == _REPORT_5_PARENT_GROUP_NORMALIZED:
-        return True
-
-    prefix = "PHU HUYNH CO CON"
-    if not normalized.startswith(prefix + " "):
-        return False
-    suffix_tokens = normalized[len(prefix):].strip().split()
-    allowed_tokens = {"C2", "C3", "CAP", "2", "3", "VA"}
-    if not suffix_tokens or not set(suffix_tokens).issubset(allowed_tokens):
-        return False
-
-    has_c2 = "C2" in suffix_tokens or ("CAP" in suffix_tokens and "2" in suffix_tokens)
-    has_c3 = "C3" in suffix_tokens or ("CAP" in suffix_tokens and "3" in suffix_tokens)
-    return has_c2 and has_c3
-
-
-def classify_report_5_age_group(description, fallback_age_group=None):
-    """
-    Phân loại tuổi chỉ cho BC5.
-
-    Nhận diện phụ huynh và gộp các nhãn dưới 35 vào nhóm 22–35 từ description
-    (hoặc Nhóm tuổi fallback); các nhóm còn lại giữ quy tắc classify_age_group.
-    """
-    candidate = description if isinstance(description, str) and description.strip() else fallback_age_group
-    if _is_report_5_parent_group(candidate):
-        return REPORT_5_PARENT_GROUP
-
-    if isinstance(candidate, str) and candidate.strip().lower() in (
-        REPORT_5_WORKER_22_35_GROUP.lower(),
-        "người đi làm dưới 35 tuổi",
-        "người đi làm từ dưới 35 tuổi",
-    ):
-        return REPORT_5_WORKER_22_35_GROUP
-
-    common_group = classify_age_group(candidate)
-    if common_group in REPORT_5_AGE_GROUPS:
-        return common_group
-    # BC5 tiếp tục gộp giá trị thiếu/không khớp vào Khác.
-    return "Khác"
+# Dùng chung hàm phân loại tuổi của data_processing cho cả BC3 và BC5.
+classify_report_5_age_group = classify_age_group
 
 
 def build_report_5_tables(df_filtered, fetch_time):
@@ -1207,16 +1130,8 @@ def build_report_5_tables(df_filtered, fetch_time):
     df_calc["Data_coc_chot"] = relation_ids.isin(REPORT_5_BILL_RELATION_IDS).astype(int)
     df_calc["SAI SỐ - SAI ĐỐI TƯỢNG"] = relation_ids.isin(REPORT_5_ERROR_RELATION_IDS).astype(int)
 
-    # Phân loại tuổi cục bộ BC5: nhận diện thêm phụ huynh nhưng không đổi AGE_GROUPS chung.
-    raw_description = df_calc.get("description", pd.Series(index=df_calc.index, dtype=object))
-    fallback_age = df_calc.get("Nhóm tuổi", pd.Series(index=df_calc.index, dtype=object))
-    r5_age_series = pd.Series(
-        [
-            classify_report_5_age_group(raw_description.loc[idx], fallback_age.loc[idx])
-            for idx in df_calc.index
-        ],
-        index=df_calc.index,
-    )
+    # Phân loại tuổi thống nhất với BC3 từ description và cột Nhóm tuổi dự phòng.
+    r5_age_series = classify_dataframe_age_groups(df_calc)
 
     # Luôn phân loại lại từ danh sách nguồn gốc. Điều này tránh dùng kết quả tạm
     # của phiên tải dữ liệu cũ khi quy tắc lọc nguồn BC5 vừa được cập nhật.
@@ -1471,6 +1386,7 @@ def prepare_excel_report_5(df_table):
         return df_table
     df_excel = df_table.copy()
     time_val = df_excel[FIELD_TIME].iloc[0] if len(df_excel) > 0 else ''
+    total_row = aggregate_report_5_rows(df_excel, time_val, 'TỔNG CỘNG')
     return pd.concat([df_excel, pd.DataFrame([total_row])], ignore_index=True)
 
 
@@ -1550,9 +1466,11 @@ def build_report_6_tables(df_filtered, fetch_time):
         }
 
     df_calc = df_filtered.copy()
-    if "Data_coc_chot" not in df_calc.columns:
-        relation = df_calc.get("Mối quan hệ", pd.Series(index=df_calc.index, dtype=object)).fillna("")
-        df_calc["Data_coc_chot"] = relation.isin(COC_CHOT_LABELS).astype(int)
+    # Bills dùng đúng L8 + L9 + L10 (relation_id in (15, 51, 6)) như Báo cáo 1, 3, 4, 5.
+    if "relation_id" not in df_calc.columns:
+        raise ValueError("Dữ liệu thiếu relation_id. Vui lòng tải lại dữ liệu Getfly.")
+    relation_ids = pd.to_numeric(df_calc["relation_id"], errors="coerce")
+    df_calc["Data_coc_chot"] = relation_ids.isin(REPORT_6_BILL_RELATION_IDS).astype(int)
 
     # Tương tự BC5, không sử dụng trọng số tạm từ phiên cũ để thay đổi quy tắc
     # lọc nguồn có hiệu lực ngay khi ứng dụng được tải lại.
